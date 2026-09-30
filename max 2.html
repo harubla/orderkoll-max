@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="sv" class="scroll-smooth">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0b0f">
+<title>OrderKoll – Håll koll på dagens order</title>
+
+<!-- Undvik blixt av fel tema vid laddning -->
+<script>
+try{const s=JSON.parse(localStorage.getItem('orderkoll.v1'));const t=s&&s.settings&&s.settings.theme? s.settings.theme : (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); if(t==='dark')document.documentElement.classList.add('dark');}catch(e){if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+</style>
+
+<style>
+:root{--ok-rose:#f43f5e;--ok-sky:#0ea5e9;--ok-emerald:#10b981;}
+html{-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-feature-settings:"cv02","cv11";}
+.font-mono{font-family:'JetBrains Mono',ui-monospace,monospace !important}
+::selection{background:rgba(99,102,241,.25)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(120,120,130,.35);border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(120,120,130,.6);border:2px solid transparent;background-clip:content-box}
+
+kbd.kbd{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1;padding:3px 6px;border-radius:6px;border:1px solid rgba(120,120,130,.35);border-bottom-width:2px;background:rgba(120,120,130,.08);color:inherit}
+
+/* Switch */
+.sw{position:relative;width:42px;height:24px;appearance:none;-webkit-appearance:none;background:#d4d4d8;border-radius:999px;transition:background .2s;cursor:pointer;flex:none;outline:none}
+.dark .sw{background:#3f3f46}
+.sw:checked{background:#10b981}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:left .18s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.sw:checked::after{left:20px}
+.sw:disabled{opacity:.4;cursor:not-allowed}
+
+/* Kort-animationer */
+@keyframes cardIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.card{animation:cardIn .35s cubic-bezier(.2,.9,.3,1) both}
+.card.dragging{opacity:.45;transform:scale(.97)}
+.dz-over{outline:2px dashed var(--dz,#94a3b8);outline-offset:-6px;border-radius:24px}
+.dropzone[data-prio="high"].dz-over{--dz:#fb7185;background:rgba(244,63,94,.07)}
+.dropzone[data-prio="low"].dz-over{--dz:#38bdf8;background:rgba(14,165,233,.07)}
+
+/* Brådskande kort */
+@keyframes urgentGlow{0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.45)}50%{box-shadow:0 0 0 6px rgba(244,63,94,0)}}
+.card.urgent{border-color:rgba(244,63,94,.7)!important;animation:urgentGlow 1.6s ease-in-out infinite}
+@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.35);opacity:.6}}
+.pulse-dot{animation:pulseDot 1.2s ease-in-out infinite}
+
+/* Påminnelse-panel */
+@keyframes remIn{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+.reminder{animation:remIn .35s cubic-bezier(.2,.9,.3,1) both}
+@keyframes bellSwing{0%,100%{transform:rotate(0)}20%{transform:rotate(14deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-5deg)}}
+.reminder .bell{animation:bellSwing 1.4s ease-in-out infinite;transform-origin:top center}
+
+/* Toast */
+@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
+.toast{animation:toastIn .25s cubic-bezier(.2,.9,.3,1) both}
+.toast.hide{transition:opacity .3s,transform .3s;opacity:0;transform:translateY(8px) scale(.96)}
+
+/* Buddy-karaktär */
+#buddy{position:fixed;left:22px;bottom:0;z-index:70;pointer-events:none;transform:translateY(115%);transition:transform .5s cubic-bezier(.2,1.3,.35,1)}
+#buddy.in{transform:translateY(6px)}
+#buddy.out{transform:translateY(120%)!important;transition:transform .4s ease-in}
+#buddy .bob{animation:buddyBob 1.5s ease-in-out infinite alternate}
+@keyframes buddyBob{from{transform:translateY(0)}to{transform:translateY(-7px)}}
+#buddy .thumb{transform-origin:78px 46px;animation:thumbPop .5s .35s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes thumbPop{from{transform:scale(.4) rotate(18deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+#buddy .starA{animation:twinkle 1s ease-in-out infinite alternate;transform-origin:center}
+#buddy .starB{animation:twinkle 1.2s .3s ease-in-out infinite alternate;transform-origin:center}
+@keyframes twinkle{from{opacity:.25;transform:scale(.7) rotate(-8deg)}to{opacity:1;transform:scale(1.08) rotate(8deg)}}
+#buddy .bubble{animation:bubblePop .4s .5s cubic-bezier(.2,1.5,.4,1) both;transform-origin:left bottom}
+@keyframes bubblePop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+#buddy .eyeL,#buddy .eyeR{animation:blink 3.6s infinite}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+
+/* Övrigt */
+@keyframes spinOnce{to{transform:rotate(360deg)}}
+.syncing-icon{animation:spinOnce 1s linear infinite}
+.fade-in{animation:toastIn .3s both}
+input,textarea,select,button{outline:none}
+.field:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+.invalid{border-color:#f43f5e!important;box-shadow:0 0 0 3px rgba(244,63,94,.18)!important}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.shake{animation:shake .25s ease-in-out 2}
+.dragging-ghost{cursor:grabbing}
+</style>
+</head>
+
+<body class="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-[#0b0b0f] dark:text-zinc-100 antialiased transition-colors duration-300">
+
+<!-- Bakgrundsdekor -->
+<div class="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+  <div class="absolute -top-40 -left-40 h-[480px] w-[480px] rounded-full bg-gradient-to-br from-sky-400/25 to-indigo-500/15 blur-3xl dark:from-sky-500/10 dark:to-indigo-600/10"></div>
+  <div class="absolute -top-32 right-[-120px] h-[420px] w-[420px] rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/10 blur-3xl dark:from-rose-500/10 dark:to-transparent"></div>
+</div>
+
+<div class="relative mx-auto max-w-7xl px-4 sm:px-6 pb-24">
+
+  <!-- ================= HEADER ================= -->
+  <header class="sticky top-0 z-40 -mx-4 sm:-mx-6 px-4 sm:px-6 border-b border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-100/80 dark:bg-[#0b0b0f]/80 backdrop-blur-xl">
+    <div class="flex items-center gap-3 py-3">
+      <!-- Logotyp -->
+      <div class="flex items-center gap-2.5 select-none">
+        <div class="relative grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/25">
+          <i data-lucide="clipboard-list" class="h-5 w-5"></i>
+          <span id="brandDot" class="absolute -right-1 -top-1 hidden h-3 w-3 rounded-full bg-rose-500 ring-2 ring-zinc-100 dark:ring-[#0b0b0f] pulse-dot"></span>
+        </div>
+        <div class="leading-tight">
+          <div class="font-extrabold tracking-tight text-[17px]">OrderKoll</div>
+          <div id="todayLine" class="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium"></div>
+        </div>
+      </div>
+
+      <!-- Sök -->
+      <div class="relative flex-1 max-w-xl mx-auto">
+        <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400"></i>
+        <input id="searchInput" type="text" placeholder="Sök ordernummer, åtgärd, anteckning…" autocomplete="off"
+          class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 py-2 pl-9 pr-16 text-sm placeholder:text-zinc-400">
+        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+          <button data-action="clear-search" id="clearSearchBtn" class="hidden rounded-md p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200" title="Rensa sökning"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
+          <kbd class="kbd hidden sm:block">/</kbd>
+        </div>
+      </div>
+
+      <!-- Knappar -->
+      <div class="flex items-center gap-1.5">
+        <button data-action="open-form" class="hidden sm:inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 px-3.5 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:scale-[1.03] active:scale-95 transition-transform">
+          <i data-lucide="plus" class="h-4 w-4"></i> Nytt kort <kbd class="kbd !bg-white/15 !border-white/25 !text-white/90">N</kbd>
+        </button>
+        <button data-action="theme-toggle" class="grid h-9 w-9 place-items-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:scale-105 active:scale-95 transition" title="Växla tema (T)">
+          <span class="dark:hidden"><i data-lucide="moon" class="h-4.5 w-4.5"></i></span>
+          <span class="hidden dark:block"><i data-lucide="sun" class="h-4.5 w-4.5"></i></span>
+        </button>
+        <button data-action="settings-open" class="grid h-9 w-9 place-items-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:scale-105 active:scale-95 transition" title="Inställningar">
+          <i data-lucide="settings" class="h-4.5 w-4.5"></i>
+        </button>
+        <div class="relative">
+          <button data-action="auth-toggle" id="btnAuth" class="relative grid h-9 w-9 place-items-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:scale-105 active:scale-95 transition" title="Logga in & synka">
+            <i data-lucide="cloud" class="h-4.5 w-4.5"></i>
+            <span id="authDot" class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-zinc-400 ring-2 ring-zinc-100 dark:ring-[#0b0b0f]"></span>
+          </button>
+          <!-- Authpanel -->
+          <div id="authPanel" class="hidden absolute right-0 top-11 z-50 w-80 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-2xl shadow-black/10 p-4 fade-in">
+            <div id="authLoggedOut">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="grid h-8 w-8 place-items-center rounded-lg bg-indigo-500/10 text-indigo-500"><i data-lucide="log-in" class="h-4 w-4"></i></div>
+                <div>
+                  <div class="text-sm font-bold">Logga in & synka</div>
+                  <div class="text-[11px] text-zinc-500">Molnsynk mellan dina enheter</div>
+                </div>
+              </div>
+              <div class="mt-3 space-y-2">
+                <div class="relative">
+                  <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400"></i>
+                  <input id="authEmail" type="email" placeholder="E-postadress" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-2 pl-9 pr-3 text-sm">
+                </div>
+                <div class="relative">
+                  <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400"></i>
+                  <input id="authPass" type="password" placeholder="Lösenord (min 6 tecken)" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-2 pl-9 pr-3 text-sm">
+                </div>
+                <p id="authErr" class="hidden text-xs font-medium text-rose-500"></p>
+                <div class="flex gap-2 pt-1">
+                  <button data-action="signin" class="flex-1 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 py-2 text-sm font-semibold text-white hover:opacity-90 active:scale-95 transition">Logga in</button>
+                  <button data-action="signup" class="flex-1 rounded-xl border border-zinc-200 dark:border-zinc-700 py-2 text-sm font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900 active:scale-95 transition">Skapa konto</button>
+                </div>
+                <details class="pt-1 text-[11px] text-zinc-400">
+                  <summary class="cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-200">Kräver aktiverad e-postinloggning & Firestore i ditt Firebase-projekt</summary>
+                  <div class="mt-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 p-2 leading-relaxed">
+                    <p class="font-semibold text-zinc-500 dark:text-zinc-300">Rekommenderade Firestore-regler:</p>
+                    <code class="block mt-1 whitespace-pre-wrap font-mono text-[10px] text-zinc-500 dark:text-zinc-400">rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /users/{uid} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid;
+    }
+  }
+}</code>
+                  </div>
+                </details>
+              </div>
+            </div>
+            <div id="authLoggedIn" class="hidden">
+              <div class="flex items-center gap-3">
+                <div id="authAvatar" class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold text-sm">?</div>
+                <div class="min-w-0">
+                  <div id="authUserEmail" class="truncate text-sm font-bold"></div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <span id="syncDot" class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                    <span id="syncText">Synkad</span>
+                  </div>
+                </div>
+              </div>
+              <p id="syncErr" class="hidden mt-2.5 rounded-lg bg-rose-500/10 p-2 text-[11px] leading-relaxed text-rose-500"></p>
+              <button data-action="signout" class="mt-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 py-2 text-sm font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900 active:scale-95 transition">
+                <span class="inline-flex items-center gap-2"><i data-lucide="log-out" class="h-4 w-4"></i> Logga ut</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Underraden: statistik, filter, vyer -->
+    <div class="flex flex-wrap items-center gap-2 pb-3">
+      <div class="flex items-center gap-1.5 text-xs font-semibold">
+        <span id="statHigh" class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2.5 py-1 ring-1 ring-inset ring-rose-500/25"><span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>0 hög</span>
+        <span id="statLow" class="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 px-2.5 py-1 ring-1 ring-inset ring-sky-500/25"><span class="h-1.5 w-1.5 rounded-full bg-sky-500"></span>0 låg</span>
+        <span id="statDone" class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 ring-1 ring-inset ring-emerald-500/25"><i data-lucide="circle-check" class="h-3 w-3"></i>0 klara idag</span>
+      </div>
+
+      <span class="hidden sm:block h-5 w-px bg-zinc-300 dark:bg-zinc-700"></span>
+
+      <!-- Filter -->
+      <div class="flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 p-1" id="filterChips">
+        <button data-action="filter" data-v="all" class="chip rounded-lg px-2.5 py-1 text-xs font-semibold">Alla</button>
+        <button data-action="filter" data-v="low" class="chip rounded-lg px-2.5 py-1 text-xs font-semibold">Låg prio</button>
+        <button data-action="filter" data-v="high" class="chip rounded-lg px-2.5 py-1 text-xs font-semibold">Hög prio</button>
+      </div>
+
+      <!-- Vy -->
+      <div class="flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 p-1">
+        <button data-action="view" data-v="split" id="viewSplit" class="chip rounded-lg p-1.5" title="Två kolumner (låg/hög)"><i data-lucide="columns-2" class="h-4 w-4"></i></button>
+        <button data-action="view" data-v="timeline" id="viewTimeline" class="chip rounded-lg p-1.5" title="Alla kort i tidsordning"><i data-lucide="list" class="h-4 w-4"></i></button>
+      </div>
+
+      <button data-action="sort" id="sortBtn" class="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 px-2.5 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition" title="Byt sorteringsordning">
+        <i data-lucide="arrow-down-wide-narrow" class="h-3.5 w-3.5"></i><span id="sortLabel">Nyast överst</span>
+      </button>
+
+      <button data-action="toggle-done" id="doneToggle" class="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 px-2.5 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition">
+        <i data-lucide="archive" class="h-3.5 w-3.5"></i>Avklarat <span id="doneCount" class="rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-1.5 py-px text-[10px] font-bold">0</span>
+        <i data-lucide="chevron-down" id="doneChevron" class="h-3.5 w-3.5 transition-transform"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= NYTT KORT (inline-formulär) ================= -->
+  <div id="formWrap" class="hidden pt-5">
+    <form id="newForm" class="rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-white dark:bg-zinc-900/70 shadow-xl shadow-indigo-500/5 overflow-hidden">
+      <div class="h-1 bg-gradient-to-r from-indigo-500 via-violet-500 to-rose-500"></div>
+      <div class="p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2 text-sm font-bold"><i data-lucide="sparkles" class="h-4 w-4 text-indigo-500"></i> Ny order</div>
+          <button type="button" data-action="close-form" class="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" title="Stäng (Esc)"><i data-lucide="x" class="h-4 w-4"></i></button>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Ordernummer</label>
+            <input id="fOrder" type="text" placeholder="t.ex. 2024-1187" autocomplete="off" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono font-semibold">
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Åtgärd</label>
+            <input id="fAction" type="text" placeholder="t.ex. Ring kund om offert" autocomplete="off" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-medium">
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Anteckning <span class="normal-case font-normal text-zinc-400/70">(valfritt)</span></label>
+          <textarea id="fNote" rows="2" placeholder="Extra detaljer, telefonnummer, länkar…" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm resize-y"></textarea>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div>
+            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Prioritet</div>
+            <div class="flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-1" id="prioSeg">
+              <button type="button" data-action="set-form-prio" data-prio="low" class="seg-low rounded-lg px-3 py-1.5 text-xs font-semibold transition">Låg</button>
+              <button type="button" data-action="set-form-prio" data-prio="high" class="seg-high rounded-lg px-3 py-1.5 text-xs font-semibold transition">Hög</button>
+            </div>
+          </div>
+          <div id="remindPicker" class="hidden">
+            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Påminn mig om</div>
+            <div class="flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-1">
+              <button type="button" data-action="set-form-remind" data-min="15" class="rm rounded-lg px-2.5 py-1.5 text-xs font-semibold transition">15 min</button>
+              <button type="button" data-action="set-form-remind" data-min="30" class="rm rounded-lg px-2.5 py-1.5 text-xs font-semibold transition">30 min</button>
+              <button type="button" data-action="set-form-remind" data-min="60" class="rm rounded-lg px-2.5 py-1.5 text-xs font-semibold transition">1 tim</button>
+              <button type="button" data-action="set-form-remind" data-min="120" class="rm rounded-lg px-2.5 py-1.5 text-xs font-semibold transition">2 tim</button>
+            </div>
+          </div>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" data-action="close-form" class="rounded-xl px-3.5 py-2 text-sm font-semibold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">Avbryt</button>
+            <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:opacity-90 active:scale-95 transition"><i data-lucide="plus" class="h-4 w-4"></i> Lägg till kort</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- ================= TAVLA ================= -->
+  <main id="board" class="pt-5"></main>
+
+  <!-- Mobilt flytande "nytt kort" -->
+  <button data-action="open-form" class="sm:hidden fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-2xl shadow-indigo-500/40 active:scale-90 transition-transform" title="Nytt kort (N)">
+    <i data-lucide="plus" class="h-6 w-6"></i>
+  </button>
+
+  <!-- ================= AVKLARAT ================= -->
+  <section id="doneSection" class="mt-8">
+    <div id="doneBody" class="rounded-2xl border border-dashed border-emerald-300/60 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.05] p-3 sm:p-4">
+      <div class="flex items-center gap-2 mb-2 px-1">
+        <i data-lucide="party-popper" class="h-4 w-4 text-emerald-500"></i>
+        <h2 class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Avklarat</h2>
+        <span class="text-[11px] text-zinc-400">– kompakt vy, tar ingen plats men finns kvar</span>
+      </div>
+      <ul id="doneList" class="divide-y divide-emerald-500/10"></ul>
+    </div>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="mt-14 border-t border-zinc-200/70 dark:border-zinc-800/70 pt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-zinc-400">
+    <span class="inline-flex items-center gap-1.5"><i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Sparas automatiskt lokalt i webbläsaren</span>
+    <span class="hidden sm:inline-flex items-center gap-3"><kbd class="kbd">N</kbd> nytt kort <kbd class="kbd">/</kbd> sök <kbd class="kbd">T</kbd> tema <kbd class="kbd">Esc</kbd> stäng</span>
+    <span class="ml-auto" id="footerCount"></span>
+  </footer>
+</div>
+
+<!-- ================= PÅMINNELSER (i dokumentet) ================= -->
+<div id="reminderStack" class="fixed bottom-4 right-4 z-[60] flex w-[min(92vw,380px)] flex-col gap-2.5"></div>
+
+<!-- ================= TOASTS ================= -->
+<div id="toastWrap" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex flex-col items-center gap-2 w-[min(92vw,420px)] pointer-events-none"></div>
+
+<!-- Buddy-karaktär -->
+<div id="buddy" class="hidden"></div>
+
+<!-- ================= INSTÄLLNINGAR ================= -->
+<div id="drawerOverlay" class="fixed inset-0 z-[45] bg-black/40 backdrop-blur-[2px] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+<aside id="drawer" class="fixed right-0 top-0 z-50 h-full w-full max-w-md translate-x-full border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e13] shadow-2xl transition-transform duration-300 ease-out overflow-y-auto">
+  <div class="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0e0e13]/90 backdrop-blur px-5 py-4">
+    <div class="flex items-center gap-2.5">
+      <div class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"><i data-lucide="settings" class="h-4 w-4"></i></div>
+      <h2 class="font-bold">Inställningar</h2>
+    </div>
+    <button data-action="settings-close" class="rounded-lg p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"><i data-lucide="x" class="h-4.5 w-4.5"></i></button>
+  </div>
+
+  <div class="p-5 space-y-7 text-sm">
+
+    <!-- Utseende -->
+    <section>
+      <h3 class="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400">Utseende</h3>
+      <div class="flex items-center justify-between rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div class="flex items-center gap-2.5"><i data-lucide="sun" class="h-4 w-4 text-amber-500"></i><span class="font-medium">Tema</span></div>
+        <div class="flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-1">
+          <button data-action="theme-set" data-v="light" class="theme-seg rounded-lg px-3 py-1.5 text-xs font-semibold">Ljust</button>
+          <button data-action="theme-set" data-v="dark" class="theme-seg rounded-lg px-3 py-1.5 text-xs font-semibold">Mörkt</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Påminnelser -->
+    <section>
+      <h3 class="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400">Påminnelser</h3>
+      <div class="space-y-2.5">
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5 mb-2"><i data-lucide="bell-ring" class="h-4 w-4 text-rose-500"></i><span class="font-medium">Visa påminnelser via</span></div>
+          <select id="setDelivery" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm">
+            <option value="web">Endast på webbsidan (påminnelse-ruta)</option>
+            <option value="system">Endast systemnotis (operativsystemet)</option>
+            <option value="both">Både webbsida och systemnotis</option>
+          </select>
+        </div>
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5 mb-2"><i data-lucide="volume-2" class="h-4 w-4 text-indigo-500"></i><span class="font-medium">Ljudsignal</span></div>
+          <div class="flex gap-2">
+            <select id="setSound" class="field flex-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm">
+              <option value="ping">Mjuk ping</option>
+              <option value="klocka">Klocka</option>
+              <option value="blipp">Digital blipp</option>
+            </select>
+            <button data-action="test-sound" class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 text-zinc-500 hover:text-indigo-500 hover:border-indigo-300 transition" title="Testa ljud"><i data-lucide="play" class="h-4 w-4"></i></button>
+          </div>
+          <div class="mt-3 flex items-center gap-3">
+            <i data-lucide="volume" class="h-3.5 w-3.5 text-zinc-400"></i>
+            <input id="setVolume" type="range" min="0" max="100" value="80" class="flex-1 accent-indigo-500">
+            <span id="volLabel" class="w-9 text-right text-xs font-semibold text-zinc-500">80%</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="repeat" class="h-4 w-4 text-zinc-400"></i><span class="font-medium">Upprepa tills hanterad</span></div>
+          <input type="checkbox" id="setRepeat" class="sw">
+        </div>
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="timer" class="h-4 w-4 text-zinc-400"></i><span class="font-medium">Standardtid, nya högprio-kort</span></div>
+          <select id="setDefaultRemind" class="field rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-2 py-1.5 text-xs font-semibold">
+            <option value="15">15 min</option><option value="30">30 min</option><option value="60">1 timme</option><option value="120">2 timmar</option>
+          </select>
+        </div>
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="alarm-clock" class="h-4 w-4 text-zinc-400"></i><span class="font-medium">Snooze-längd</span></div>
+          <select id="setSnooze" class="field rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-2 py-1.5 text-xs font-semibold">
+            <option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option>
+          </select>
+        </div>
+        <button data-action="test-remind" class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/20 hover:opacity-90 active:scale-[.98] transition">
+          <i data-lucide="bell-ring" class="h-4 w-4"></i> Skicka testpåminnelse
+        </button>
+      </div>
+    </section>
+
+    <!-- När klart -->
+    <section>
+      <h3 class="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400">När ett kort blir klart</h3>
+      <div class="space-y-2.5">
+        <div class="flex items-center justify-between rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="party-popper" class="h-4 w-4 text-emerald-500"></i><span class="font-medium">Konfettiregn</span></div>
+          <input type="checkbox" id="setConfetti" class="sw" checked>
+        </div>
+        <div class="flex items-center justify-between rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="audio-lines" class="h-4 w-4 text-emerald-500"></i><span class="font-medium">Uppmuntrande ljud</span></div>
+          <input type="checkbox" id="setDoneSound" class="sw" checked>
+        </div>
+        <div class="flex items-center justify-between rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+          <div class="flex items-center gap-2.5"><i data-lucide="thumbs-up" class="h-4 w-4 text-emerald-500"></i><div><div class="font-medium">Glad karaktär</div><div class="text-[11px] text-zinc-400">Liten kompis som ger tummen upp</div></div></div>
+          <input type="checkbox" id="setBuddy" class="sw">
+        </div>
+      </div>
+    </section>
+
+    <!-- Data -->
+    <section>
+      <h3 class="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400">Data & backup</h3>
+      <div class="space-y-2.5">
+        <button data-action="export" class="w-full flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 text-left hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:bg-indigo-500/5 transition group">
+          <div class="grid h-9 w-9 place-items-center rounded-lg bg-indigo-500/10 text-indigo-500 group-hover:scale-110 transition-transform"><i data-lucide="download" class="h-4 w-4"></i></div>
+          <div><div class="font-semibold">Exportera alla kort</div><div class="text-[11px] text-zinc-400">Ladda ner en JSON-backupfil</div></div>
+        </button>
+        <button data-action="import" id="importBtn" class="w-full flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 text-left hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:bg-indigo-500/5 transition group">
+          <div class="grid h-9 w-9 place-items-center rounded-lg bg-sky-500/10 text-sky-500 group-hover:scale-110 transition-transform"><i data-lucide="upload" class="h-4 w-4"></i></div>
+          <div><div class="font-semibold" id="importLabel">Importera backup</div><div class="text-[11px] text-zinc-400" id="importSub">Återställ från en exporterad fil (ersätter nuvarande)</div></div>
+        </button>
+        <input type="file" id="importFile" accept=".json,application/json" class="hidden">
+        <button data-action="del-done" id="delDoneBtn" class="w-full flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 text-left hover:border-amber-300 hover:bg-amber-500/5 transition group">
+          <div class="grid h-9 w-9 place-items-center rounded-lg bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform"><i data-lucide="archive-x" class="h-4 w-4"></i></div>
+          <div><div class="font-semibold" id="delDoneLabel">Radera alla avklarade kort</div><div class="text-[11px] text-zinc-400" id="delDoneSub">Klicka två gånger för att bekräfta</div></div>
+        </button>
+        <button data-action="del-all" id="delAllBtn" class="w-full flex items-center gap-3 rounded-xl border border-rose-200 dark:border-rose-500/30 p-3 text-left hover:bg-rose-500/5 transition group">
+          <div class="grid h-9 w-9 place-items-center rounded-lg bg-rose-500/10 text-rose-500 group-hover:scale-110 transition-transform"><i data-lucide="trash-2" class="h-4 w-4"></i></div>
+          <div><div class="font-semibold text-rose-600 dark:text-rose-400" id="delAllLabel">Radera ALLA kort</div><div class="text-[11px] text-zinc-400" id="delAllSub">Både sparade och avklarade – klicka två gånger</div></div>
+        </button>
+      </div>
+    </section>
+
+    <p class="text-center text-[11px] text-zinc-400 pb-4">OrderKoll v1.0 · Dina data lämnar aldrig webbläsaren om du inte loggar in för molnsynk.</p>
+  </div>
+</aside>
+
+<!-- ==================== APP-LOGIK ==================== -->
+<script type="module">
+/* ============================================================
+   OrderKoll – allt-i-ett order- & prioritetsverktyg
+   ============================================================ */
+
+// ---------- Konfiguration ----------
+const KEY = 'orderkoll.v1';
+const DEV_KEY = 'orderkoll.device';
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDQD-MMCPPtcwrylM-y52fjnKIhbf58d9Y",
+  authDomain: "remember2-465bc.firebaseapp.com",
+  projectId: "remember2-465bc",
+  storageBucket: "remember2-465bc.firebasestorage.app",
+  messagingSenderId: "497511091722",
+  appId: "1:497511091722:web:1a53ea92fec94a396199f3"
+};
+const FBV = 'https://www.gstatic.com/firebasejs/12.19.0/';
+
+const prefersDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+const DEFAULTS = {
+  theme: prefersDark() ? 'dark' : 'light',
+  volume: 0.8, sound: 'ping', delivery: 'web',
+  snoozeMin: 15, defaultRemind: 60, repeatRemind: false,
+  confettiOn: true, doneSoundOn: true, buddyOn: false,
+  view: 'split', sort: 'desc', showDone: true, filter: 'all'
+};
+
+// ---------- Hjälp ----------
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+
+const fmtT  = ts => new Intl.DateTimeFormat('sv-SE', {hour:'2-digit', minute:'2-digit'}).format(ts);
+const fmtD  = ts => new Intl.DateTimeFormat('sv-SE', {day:'numeric', month:'short'}).format(ts);
+const fmtDT = ts => fmtD(ts) + ' ' + fmtT(ts);
+function rel(ts){
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 50) return 'just nu';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + ' min sedan';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + (h === 1 ? ' timme' : ' timmar') + ' sedan';
+  const d = Math.floor(h / 24);
+  return d + (d === 1 ? ' dag' : ' dagar') + ' sedan';
+}
+const isToday = ts => new Date(ts).toDateString() === new Date().toDateString();
+
+// ---------- State ----------
+let state = { cards: [], settings: { ...DEFAULTS }, meta: { updatedAt: 0 } };
+try {
+  const raw = localStorage.getItem(KEY);
+  if (raw) {
+    const p = JSON.parse(raw);
+    state = {
+      cards: Array.isArray(p.cards) ? p.cards : [],
+      settings: { ...DEFAULTS, ...(p.settings || {}) },
+      meta: { updatedAt: (p.meta && p.meta.updatedAt) || 0 }
+    };
+  }
+} catch (e) { console.warn('Kunde inte läsa lokal data', e); }
+
+const ui = {
+  query: '', formOpen: false, formPrio: 'high', formRemind: state.settings.defaultRemind,
+  editingId: null, dragId: null, testCard: null, lastDeleted: null,
+  importArmed: false, delDoneArmed: false, delAllArmed: false
+};
+
+const findCard = id => state.cards.find(c => c.id === id);
+
+function save() {
+  state.meta.updatedAt = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Kunde inte spara lokalt!', 'err'); }
+  schedulePush();
+}
+
+// ============================================================
+//  LJUDMOTOR (WebAudio – inga externa filer)
+// ============================================================
+let AC = null;
+function ac() {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    return AC;
+  } catch (e) { return null; }
+}
+document.addEventListener('pointerdown', () => ac(), { once: true });
+const vol = () => Math.pow(state.settings.volume, 1.6);
+function tone(f, t0, dur, { type = 'sine', peak = 0.5 } = {}) {
+  const ctx = ac(); if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(peak * vol(), 0.0001), t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  } catch (e) {}
+}
+function playRemind() {
+  const ctx = ac(); if (!ctx) return;
+  const t = ctx.currentTime + 0.03, s = state.settings.sound;
+  if (s === 'ping') { tone(987.77, t, 0.5); tone(1318.5, t + 0.18, 0.75); }
+  else if (s === 'klocka') { tone(1567.98, t, 1.1, { type: 'triangle' }); tone(2093, t, 0.9, { type: 'sine', peak: 0.22 }); tone(1318.5, t + 0.34, 1.0, { type: 'triangle', peak: 0.32 }); }
+  else { tone(659.25, t, 0.12, { type: 'square', peak: 0.28 }); tone(880, t + 0.15, 0.2, { type: 'square', peak: 0.28 }); }
+}
+function playDone() {
+  const ctx = ac(); if (!ctx) return;
+  const t = ctx.currentTime + 0.03;
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, t + i * 0.09, 0.5, { type: 'triangle', peak: 0.42 - i * 0.05 }));
+  tone(1568, t + 0.42, 0.6, { peak: 0.14 });
+  tone(2093, t + 0.52, 0.7, { peak: 0.1 });
+}
+
+// ============================================================
+//  EFFEKTER: konfetti, buddy, toast
+// ============================================================
+function confettiSides() {
+  if (typeof confetti !== 'function') return;
+  const colors = ['#f43f5e', '#38bdf8', '#34d399', '#fbbf24', '#a78bfa'];
+  confetti({ particleCount: 90, angle: 60,  spread: 62, startVelocity: 55, origin: { x: 0, y: 0.72 }, colors, ticks: 230 });
+  confetti({ particleCount: 90, angle: 120, spread: 62, startVelocity: 55, origin: { x: 1, y: 0.72 }, colors, ticks: 230 });
+  setTimeout(() => {
+    confetti({ particleCount: 45, angle: 60,  spread: 85, origin: { x: 0, y: 0.9 }, colors, scalar: 0.9 });
+    confetti({ particleCount: 45, angle: 120, spread: 85, origin: { x: 1, y: 0.9 }, colors, scalar: 0.9 });
+  }, 260);
+}
+
+const BUDDY_PHRASES = ['Bra jobbat!', 'Snyggt!', 'Ännu en klar!', 'Toppen!', 'Starkt jobbat!', 'Du rullar på!'];
+function showBuddy() {
+  const el = $('#buddy');
+  const phrase = BUDDY_PHRASES[Math.floor(Math.random() * BUDDY_PHRASES.length)];
+  el.innerHTML = `
+  <div class="relative flex items-end gap-2">
+    <svg class="bob drop-shadow-2xl" width="110" height="110" viewBox="0 0 110 110" fill="none">
+      <defs>
+        <linearGradient id="bGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#0d9488"/>
+        </linearGradient>
+      </defs>
+      <!-- prickiga stjärnor -->
+      <path class="starA" d="M14 22 l2.4 5.6 5.6 2.4 -5.6 2.4 -2.4 5.6 -2.4 -5.6 -5.6 -2.4 5.6 -2.4z" fill="#fbbf24"/>
+      <path class="starB" d="M24 8 l1.7 4 4 1.7 -4 1.7 -1.7 4 -1.7 -4 -4 -1.7 4 -1.7z" fill="#a78bfa"/>
+      <!-- tumme upp-arm -->
+      <g class="thumb">
+        <path d="M76 62 q16 -2 17 -16 q.4 -7 -5 -7 l-9 1 q1.5 -9 -1 -12 q-2 -2.4 -4.6 -.6 q-2.4 1.9 -3.4 8.4 q-1 6.8 -6 9z" fill="url(#bGrad)" stroke="#065f46" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M88 39 l-9 1" stroke="#065f46" stroke-width="2.4" stroke-linecap="round"/>
+      </g>
+      <!-- kropp -->
+      <circle cx="50" cy="62" r="34" fill="url(#bGrad)"/>
+      <ellipse cx="38" cy="50" rx="12" ry="8" fill="#ffffff" opacity=".22"/>
+      <!-- kinder -->
+      <circle cx="37" cy="70" r="5" fill="#fda4af" opacity=".55"/>
+      <circle cx="63" cy="70" r="5" fill="#fda4af" opacity=".55"/>
+      <!-- ögon -->
+      <g class="eyeL"><circle cx="40" cy="58" r="4.6" fill="#083344"/><circle cx="41.6" cy="56.4" r="1.5" fill="#fff"/></g>
+      <g class="eyeR"><circle cx="60" cy="58" r="4.6" fill="#083344"/><circle cx="61.6" cy="56.4" r="1.5" fill="#fff"/></g>
+      <!-- leende -->
+      <path d="M42 73 q8 7 16 0" stroke="#083344" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+      <!-- vänster arm, vinkar -->
+      <path d="M20 70 q-9 -3 -10 -13" stroke="url(#bGrad)" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <circle cx="10" cy="55" r="5.4" fill="url(#bGrad)"/>
+    </svg>
+    <div class="bubble mb-8 rounded-2xl rounded-bl-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 text-sm font-bold shadow-xl">${phrase}</div>
+  </div>`;
+  el.classList.remove('hidden', 'out');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  clearTimeout(showBuddy._t1); clearTimeout(showBuddy._t2);
+  showBuddy._t1 = setTimeout(() => el.classList.add('out'), 3000);
+  showBuddy._t2 = setTimeout(() => { el.classList.add('hidden'); el.classList.remove('in', 'out'); }, 3500);
+}
+
+function toast(msg, type = 'ok', opts = {}) {
+  const wrap = $('#toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast pointer-events-auto flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-2xl backdrop-blur-lg ' +
+    (type === 'err' ? 'border-rose-300/60 bg-rose-50/95 text-rose-600 dark:border-rose-500/40 dark:bg-rose-950/90 dark:text-rose-300'
+                    : 'border-zinc-200/80 bg-white/95 text-zinc-700 dark:border-zinc-700/80 dark:bg-zinc-900/95 dark:text-zinc-200');
+  const icon = type === 'err' ? 'circle-alert' : 'circle-check';
+  const icColor = type === 'err' ? 'text-rose-500' : 'text-emerald-500';
+  el.innerHTML = `<i data-lucide="${icon}" class="h-4 w-4 ${icColor}"></i><span>${msg}</span>`;
+  if (opts.actionLabel) {
+    const b = document.createElement('button');
+    b.className = 'ml-1 rounded-lg bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition';
+    b.textContent = opts.actionLabel;
+    b.onclick = () => { opts.onAction && opts.onAction(); dismiss(); };
+    el.appendChild(b);
+  }
+  wrap.appendChild(el);
+  window.lucide && lucide.createIcons();
+  let done = false;
+  const dismiss = () => { if (done) return; done = true; el.classList.add('hide'); setTimeout(() => el.remove(), 320); };
+  setTimeout(dismiss, opts.duration || 4500);
+}
+
+function celebrate() {
+  if (state.settings.confettiOn) confettiSides();
+  if (state.settings.doneSoundOn) playDone();
+  if (state.settings.buddyOn) showBuddy();
+}
+
+// ============================================================
+//  PÅMINNELSE-MOTOR
+// ============================================================
+const timers = new Map();
+const clearTimer = id => { const t = timers.get(id); if (t) clearTimeout(t); timers.delete(id); };
+
+function nextDue(c, now = Date.now()) {
+  if (c.status !== 'active' || c.priority !== 'high') return null;
+  if (c.snoozeUntil) {
+    if (c.snoozeUntil > now) return c.snoozeUntil;
+    if (!c.remindDismissed) return now; // snooze har passerat
+    return null;
+  }
+  const interval = (c.remindMin || 60) * 60000;
+  if (!c.lastRemindAt) return (c.remindBase || c.createdAt) + interval;
+  if (!state.settings.repeatRemind || c.remindDismissed) return null;
+  return c.lastRemindAt + interval;
+}
+
+function scheduleAll() {
+  [...timers.keys()].forEach(clearTimer);
+  const now = Date.now();
+  let delay = 1200;
+  for (const c of state.cards) {
+    const due = nextDue(c, now);
+    if (due == null) continue;
+    const ms = due - now;
+    if (ms <= 0) {
+      if (!c.urgent) { setTimeout(() => fireReminder(c.id), delay); delay += 1300; }
+    } else {
+      timers.set(c.id, setTimeout(() => fireReminder(c.id), ms));
+    }
+  }
+}
+
+function notify(title, body) {
+  const d = state.settings.delivery;
+  if (d === 'web') return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, { body, tag: 'orderkoll-' + Date.now(), icon: undefined });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (e) {}
+}
+
+function fireReminder(id) {
+  const c = findCard(id);
+  if (!c || c.status !== 'active' || c.priority !== 'high') return;
+  clearTimer(id);
+  c.snoozeUntil = null;
+  c.lastRemindAt = Date.now();
+  c.urgent = true;
+  save(); scheduleAll(); renderAll(); renderReminders();
+  playRemind();
+  notify('Påminnelse – Order ' + c.order, (c.action || '') + ' · skapad ' + fmtDT(c.createdAt));
+}
+
+function snooze(id) {
+  const c = findCard(id); if (!c) return;
+  c.snoozeUntil = Date.now() + state.settings.snoozeMin * 60000;
+  c.urgent = false;
+  save(); scheduleAll(); renderAll(); renderReminders();
+  toast('Påminnelse snoozad ' + state.settings.snoozeMin + ' min');
+  playShortBlip();
+}
+function dismissRemind(id) {
+  const c = findCard(id); if (!c) return;
+  c.remindDismissed = true; c.urgent = false; c.snoozeUntil = null;
+  save(); scheduleAll(); renderAll(); renderReminders();
+}
+function playShortBlip(){ const ctx=ac(); if(!ctx) return; tone(880, ctx.currentTime+0.02, .12, {type:'square', peak:.2}); }
+
+// ============================================================
+//  RENDERING
+// ============================================================
+const board = $('#board');
+const icons = () => window.lucide && lucide.createIcons();
+
+function prioBadge(p) {
+  return p === 'high'
+    ? '<span class="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 ring-1 ring-inset ring-rose-500/25">Hög</span>'
+    : '<span class="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 ring-1 ring-inset ring-sky-500/25">Låg</span>';
+}
+
+function remindChip(c) {
+  if (c.priority !== 'high') return '';
+  if (c.urgent) return '<span class="inline-flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white pulse-dot"><i data-lucide="bell-ring" class="h-3 w-3"></i>Påminn nu!</span>';
+  if (c.snoozeUntil && c.snoozeUntil > Date.now())
+    return `<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400"><i data-lucide="alarm-clock" class="h-3 w-3"></i>Snoozad till ${fmtT(c.snoozeUntil)}</span>`;
+  return `<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-400"><i data-lucide="timer" class="h-3 w-3"></i>Påm. ${c.remindMin >= 60 ? (c.remindMin / 60) + ' tim' : c.remindMin + ' min'}</span>`;
+}
+
+function cardHTML(c, i) {
+  const high = c.priority === 'high';
+  const col = high ? 'rose' : 'sky';
+  const older = !isToday(c.createdAt);
+  const accent = high
+    ? 'border-rose-200 dark:border-rose-500/25 hover:border-rose-300 dark:hover:border-rose-500/45'
+    : 'border-sky-200 dark:border-sky-500/25 hover:border-sky-300 dark:hover:border-sky-500/45';
+
+  if (ui.editingId === c.id) return editCardHTML(c, i);
+
+  return `
+  <article data-id="${c.id}" draggable="true" style="animation-delay:${Math.min(i * 45, 400)}ms"
+    class="card ${c.urgent ? 'urgent' : ''} group relative overflow-hidden rounded-2xl border ${accent} bg-white dark:bg-zinc-900/70 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+    <div class="absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${high ? 'from-rose-400 to-rose-600' : 'from-sky-400 to-sky-600'}"></div>
+    <div class="p-4 pl-5">
+      <div class="flex items-start justify-between gap-2">
+        <button data-action="copy" title="Klicka för att kopiera ordernumret"
+          class="group/o inline-flex min-w-0 items-center gap-1.5 font-mono text-[15px] font-bold tracking-tight text-zinc-900 dark:text-zinc-50 hover:text-${col}-600 dark:hover:text-${col}-400 transition-colors">
+          <span class="truncate">${esc(c.order)}</span>
+          <i data-lucide="copy" class="h-3.5 w-3.5 flex-none opacity-0 group-hover/o:opacity-70 transition-opacity"></i>
+        </button>
+        ${prioBadge(c.priority)}
+      </div>
+      ${c.action ? `<p class="mt-1.5 text-sm font-semibold leading-snug">${esc(c.action)}</p>` : ''}
+      ${c.note ? `<p class="mt-1 text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400 whitespace-pre-line">${esc(c.note)}</p>` : ''}
+      <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-zinc-400">
+        <span class="inline-flex items-center gap-1" title="Skapad ${fmtDT(c.createdAt)}"><i data-lucide="clock" class="h-3 w-3"></i>Skapad ${fmtDT(c.createdAt)} <span class="text-zinc-300 dark:text-zinc-600">·</span> <span class="rel">${rel(c.createdAt)}</span></span>
+        ${older ? `<span class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/25"><i data-lucide="flame" class="h-3 w-3"></i>äldre än idag</span>` : ''}
+        ${remindChip(c)}
+      </div>
+      <div class="mt-3 flex items-center gap-1 border-t border-zinc-100 dark:border-zinc-800 pt-2.5 -mb-0.5">
+        <button data-action="complete" title="Markera som klar" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/25 hover:bg-emerald-500 hover:text-white hover:ring-emerald-500 active:scale-95 transition">
+          <i data-lucide="check" class="h-3.5 w-3.5"></i> Klar
+        </button>
+        <button data-action="prio-toggle" title="Flytta till ${high ? 'låg' : 'hög'} prioritet" class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold ${high ? 'text-sky-600 dark:text-sky-400 hover:bg-sky-500/10' : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'} active:scale-95 transition">
+          <i data-lucide="${high ? 'chevrons-down' : 'chevrons-up'}" class="h-3.5 w-3.5"></i> Till ${high ? 'låg' : 'hög'}
+        </button>
+        <span class="flex-1"></span>
+        <button data-action="edit" title="Redigera kort" class="rounded-lg p-1.5 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 active:scale-90 transition"><i data-lucide="pencil" class="h-3.5 w-3.5"></i></button>
+        <button data-action="delete" title="Radera kort" class="rounded-lg p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 active:scale-90 transition"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+      </div>
+    </div>
+  </article>`;
+}
+
+function editCardHTML(c, i) {
+  const high = c.priority === 'high';
+  return `
+  <article data-id="${c.id}" style="animation-delay:${Math.min(i * 45, 400)}ms"
+    class="card relative overflow-hidden rounded-2xl border-2 border-indigo-300 dark:border-indigo-500/50 bg-white dark:bg-zinc-900/80 shadow-xl">
+    <div class="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-indigo-400 to-violet-600"></div>
+    <div class="p-4 pl-5 space-y-2.5">
+      <div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-500"><i data-lucide="pencil" class="h-3 w-3"></i> Redigerar – sparas direkt i kortet</div>
+      <input name="eOrder" value="${esc(c.order)}" placeholder="Ordernummer" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono font-bold">
+      <input name="eAction" value="${esc(c.action)}" placeholder="Åtgärd" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-medium">
+      <textarea name="eNote" rows="2" placeholder="Anteckning" class="field w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm resize-y">${esc(c.note)}</textarea>
+      <div class="flex flex-wrap items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-1 w-max">
+        <button data-action="edit-prio" data-prio="low" class="rounded-lg px-3 py-1.5 text-xs font-semibold transition ${!high ? 'bg-sky-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200'}">Låg</button>
+        <button data-action="edit-prio" data-prio="high" class="rounded-lg px-3 py-1.5 text-xs font-semibold transition ${high ? 'bg-rose-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200'}">Hög</button>
+      </div>
+      <div class="flex items-center gap-2 pt-1">
+        <button data-action="edit-save" class="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow active:scale-95 transition"><i data-lucide="check" class="h-3.5 w-3.5"></i> Spara</button>
+        <button data-action="edit-cancel" class="rounded-xl px-3 py-2 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">Avbryt</button>
+        <span class="ml-auto text-[10px] text-zinc-400">Skapad ${fmtDT(c.createdAt)}</span>
+      </div>
+    </div>
+  </article>`;
+}
+
+function emptyColHTML(prio) {
+  return `<div class="rounded-xl border border-dashed ${prio === 'high' ? 'border-rose-300/50 text-rose-400/70' : 'border-sky-300/50 text-sky-400/70'} py-7 text-center text-xs font-medium pointer-events-none">
+    Inga ${prio === 'high' ? 'högprio' : 'lågprio'}-kort här.<br><span class="text-zinc-400">Dra ett kort hit eller tryck <span class="font-mono font-bold">N</span></span>
+  </div>`;
+}
+
+function renderBoard() {
+  const q = ui.query.trim().toLowerCase();
+  const match = c => !q || [c.order, c.action, c.note].join(' ').toLowerCase().includes(q);
+  const act = state.cards.filter(c => c.status === 'active' && match(c));
+  const srt = (a, b) => state.settings.sort === 'desc' ? b.createdAt - a.createdAt : a.createdAt - b.createdAt;
+  const low = act.filter(c => c.priority === 'low').sort(srt);
+  const high = act.filter(c => c.priority === 'high').sort(srt);
+  const f = state.settings.filter;
+  const view = state.settings.view;
+
+  let html = '';
+  if (view === 'split') {
+    const colWrap = (prio, list, label, dotCls, headCls, count) => `
+      <section class="dropzone rounded-3xl border p-3 sm:p-4 transition-colors ${prio === 'high' ? 'border-rose-200/70 dark:border-rose-500/20 bg-rose-500/[0.035] dark:bg-rose-500/[0.04]' : 'border-sky-200/70 dark:border-sky-500/20 bg-sky-500/[0.035] dark:bg-sky-500/[0.04]'}" data-prio="${prio}">
+        <header class="flex items-center gap-2 px-1.5 pb-2.5">
+          <span class="h-2 w-2 rounded-full ${dotCls}"></span>
+          <h2 class="text-xs font-bold uppercase tracking-widest ${headCls}">${label}</h2>
+          <span class="rounded-full bg-white/70 dark:bg-zinc-900/70 px-2 py-0.5 text-[10px] font-bold text-zinc-500 dark:text-zinc-400 ring-1 ring-inset ring-zinc-200 dark:ring-zinc-700">${count}</span>
+        </header>
+        <div class="space-y-3 min-h-[70px]">${list.length ? list.map((c, i) => cardHTML(c, i)).join('') : emptyColHTML(prio)}</div>
+      </section>`;
+    const showLow = f !== 'high', showHigh = f !== 'low';
+    const cols = (showLow && showHigh) ? 'lg:grid-cols-2' : 'grid-cols-1 max-w-2xl mx-auto';
+    html = `<div class="grid gap-5 ${cols}">
+      ${showLow ? colWrap('low', low, 'Låg prioritet', 'bg-sky-500', 'text-sky-600 dark:text-sky-400', low.length) : ''}
+      ${showHigh ? colWrap('high', high, 'Hög prioritet – klart idag', 'bg-rose-500', 'text-rose-600 dark:text-rose-400', high.length) : ''}
+    </div>`;
+  } else {
+    let list = act.slice().sort(srt);
+    if (f === 'low') list = list.filter(c => c.priority === 'low');
+    if (f === 'high') list = list.filter(c => c.priority === 'high');
+    html = `<div class="max-w-3xl mx-auto">
+      <div class="flex items-center gap-2 px-1 pb-3">
+        <i data-lucide="list" class="h-3.5 w-3.5 text-zinc-400"></i>
+        <h2 class="text-xs font-bold uppercase tracking-widest text-zinc-500">Alla kort i tidsordning</h2>
+        <span class="rounded-full bg-white/70 dark:bg-zinc-900/70 px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-inset ring-zinc-200 dark:ring-zinc-700">${list.length}</span>
+      </div>
+      <div class="space-y-3">${list.length ? list.map((c, i) => cardHTML(c, i)).join('') : `<div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 py-10 text-center text-sm text-zinc-400">Inga kort matchar just nu – tryck <span class="font-mono font-bold">N</span> för att skapa ett.</div>`}</div>
+    </div>`;
+  }
+  if (q && act.length === 0) {
+    html += `<div class="pt-6 text-center text-sm text-zinc-400">Inga träffar på <span class="font-mono font-bold text-zinc-600 dark:text-zinc-300">"${esc(ui.query)}"</span></div>`;
+  }
+  board.innerHTML = html;
+
+  // Filterchips
+  $$('#filterChips .chip').forEach(b => {
+    const active = b.dataset.v === f;
+    b.className = 'chip rounded-lg px-2.5 py-1 text-xs font-semibold transition ' + (active
+      ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow'
+      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100');
+  });
+  // Vyknappar
+  [['#viewSplit', 'split'], ['#viewTimeline', 'timeline']].forEach(([sel, v]) => {
+    const b = $(sel), active = view === v;
+    b.className = 'chip rounded-lg p-1.5 transition ' + (active ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100');
+  });
+  $('#sortLabel').textContent = state.settings.sort === 'desc' ? 'Nyast överst' : 'Äldst överst';
+  $('#clearSearchBtn').classList.toggle('hidden', !ui.query);
+  icons();
+}
+
+function doneRowHTML(c) {
+  const prevHigh = c.prevPriority === 'high';
+  return `
+  <li data-id="${c.id}" class="group flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-emerald-500/[0.06] transition">
+    <span class="grid h-6 w-6 flex-none place-items-center rounded-full bg-emerald-500/15 text-emerald-500"><i data-lucide="check" class="h-3.5 w-3.5"></i></span>
+    <button data-action="copy" title="Klicka för att kopiera" class="font-mono text-[13px] font-bold text-zinc-600 dark:text-zinc-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors truncate max-w-[130px] sm:max-w-none">${esc(c.order)}</button>
+    <span class="hidden md:inline text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1">${esc(c.action || '')}${c.note ? ' · ' + esc(c.note.split('\n')[0]) : ''}</span>
+    <span class="flex-1 md:hidden"></span>
+    <span class="flex-none text-[10px] font-semibold ${prevHigh ? 'text-rose-400' : 'text-sky-400'} uppercase tracking-wide">${prevHigh ? 'hög' : 'låg'}</span>
+    <span class="flex-none text-[11px] text-zinc-400" title="Skapad ${fmtDT(c.createdAt)}">Klar ${fmtDT(c.doneAt)}</span>
+    <button data-action="revert" title="Återställ till ${prevHigh ? 'hög' : 'låg'} prioritet" class="flex-none rounded-lg p-1.5 text-zinc-400 hover:text-amber-500 hover:bg-amber-500/10 active:scale-90 transition"><i data-lucide="undo-2" class="h-3.5 w-3.5"></i></button>
+    <button data-action="delete" title="Radera" class="flex-none rounded-lg p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 active:scale-90 transition"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+  </li>`;
+}
+
+function renderDone() {
+  const q = ui.query.trim().toLowerCase();
+  const match = c => !q || [c.order, c.action, c.note].join(' ').toLowerCase().includes(q);
+  const done = state.cards.filter(c => c.status === 'done').sort((a, b) => b.doneAt - a.doneAt);
+  const shown = done.filter(match);
+  $('#doneCount').textContent = done.length;
+  $('#doneChevron').style.transform = state.settings.showDone ? 'rotate(0deg)' : 'rotate(-90deg)';
+  $('#doneBody').classList.toggle('hidden', !state.settings.showDone);
+  const list = $('#doneList');
+  list.innerHTML = shown.length
+    ? shown.map(doneRowHTML).join('')
+    : `<li class="py-6 text-center text-xs text-zinc-400">${q ? 'Inga avklarade kort matchar sökningen.' : 'Ingenting avklarat än – det fixar du!'}</li>`;
+}
+
+function renderStats() {
+  const act = state.cards.filter(c => c.status === 'active');
+  const h = act.filter(c => c.priority === 'high').length;
+  const l = act.filter(c => c.priority === 'low').length;
+  const dt = state.cards.filter(c => c.status === 'done' && isToday(c.doneAt)).length;
+  const urgent = act.filter(c => c.priority === 'high' && c.urgent).length;
+  $('#statHigh').innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-rose-500 ${urgent ? 'pulse-dot' : ''}"></span>${h} hög`;
+  $('#statLow').innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-sky-500"></span>${l} låg`;
+  $('#statDone').innerHTML = `<i data-lucide="circle-check" class="h-3 w-3"></i>${dt} klara idag`;
+  $('#brandDot').classList.toggle('hidden', urgent === 0);
+  $('#footerCount') && ($('#footerCount').textContent = state.cards.length + ' kort totalt');
+  const d = new Date();
+  $('#todayLine').textContent = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+}
+
+function renderReminders() {
+  const stack = $('#reminderStack');
+  const d = state.settings.delivery;
+  const urgentCards = state.cards.filter(c => c.status === 'active' && c.priority === 'high' && c.urgent);
+  const showPanel = d !== 'system';
+  const items = [...(ui.testCard ? [ui.testCard] : []), ...urgentCards];
+  if (!showPanel || items.length === 0) { stack.innerHTML = ''; return; }
+  stack.innerHTML = items.map((c, i) => {
+    const isTest = c.id === '__test';
+    return `
+    <div class="reminder rounded-2xl border-2 border-rose-300 dark:border-rose-500/50 bg-white dark:bg-zinc-900 shadow-2xl shadow-rose-500/15 overflow-hidden" style="animation-delay:${i * 90}ms" data-id="${c.id}">
+      <div class="flex items-center gap-2 bg-gradient-to-r from-rose-500 to-orange-500 px-3.5 py-2 text-white">
+        <i data-lucide="bell-ring" class="bell h-4 w-4"></i>
+        <span class="text-xs font-bold uppercase tracking-wider">${isTest ? 'Testpåminnelse' : 'Påminnelse – hög prioritet'}</span>
+        <button data-action="remind-dismiss" class="ml-auto rounded-md p-1 hover:bg-white/20 transition" title="Stäng"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
+      </div>
+      <div class="p-3.5">
+        <button data-action="copy" class="font-mono text-sm font-bold hover:text-rose-500 transition-colors" title="Klicka för att kopiera">${esc(c.order)}</button>
+        <p class="mt-0.5 text-[13px] font-medium text-zinc-600 dark:text-zinc-300">${esc(c.action || '')}</p>
+        <p class="mt-1 text-[11px] text-zinc-400">Skapad ${fmtDT(c.createdAt)} · ${rel(c.createdAt)}</p>
+        <div class="mt-2.5 flex items-center gap-1.5">
+          <button data-action="remind-done" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-600 active:scale-95 transition"><i data-lucide="check" class="h-3.5 w-3.5"></i> Klar</button>
+          <button data-action="remind-snooze" class="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/30 hover:bg-amber-500/25 active:scale-95 transition"><i data-lucide="alarm-clock" class="h-3.5 w-3.5"></i> Snooza ${state.settings.snoozeMin} min</button>
+          <button data-action="remind-dismiss" class="ml-auto rounded-lg px-2 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">Stäng</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  icons();
+}
+
+function renderAll() { renderBoard(); renderDone(); renderStats(); renderReminders(); icons(); }
+
+// ============================================================
+//  KORT-ÅTGÄRDER
+// ============================================================
+function addCard(data) {
+  const c = {
+    id: uid(), order: data.order, action: data.action, note: data.note,
+    priority: data.priority, status: 'active', createdAt: Date.now(), doneAt: null,
+    prevPriority: null, remindMin: data.priority === 'high' ? (data.remindMin || state.settings.defaultRemind) : null,
+    remindBase: Date.now(), lastRemindAt: null, snoozeUntil: null, remindDismissed: false, urgent: false
+  };
+  state.cards.push(c);
+  save(); scheduleAll(); renderAll();
+  toast('Kort tillagt i ' + (c.priority === 'high' ? 'hög' : 'låg') + ' prioritet');
+}
+
+function completeCard(id) {
+  const c = findCard(id); if (!c || c.status !== 'active') return;
+  clearTimer(id);
+  c.prevPriority = c.priority;
+  c.status = 'done'; c.doneAt = Date.now();
+  c.urgent = false; c.remindDismissed = true; c.snoozeUntil = null;
+  if (ui.editingId === id) ui.editingId = null;
+  celebrate();
+  save(); scheduleAll(); renderAll();
+}
+
+function revertCard(id) {
+  const c = findCard(id); if (!c || c.status !== 'done') return;
+  const back = c.prevPriority || 'low';
+  c.status = 'active'; c.priority = back; c.doneAt = null;
+  c.remindDismissed = false; c.urgent = false; c.snoozeUntil = null; c.lastRemindAt = null;
+  if (back === 'high') { c.remindBase = Date.now(); c.remindMin = c.remindMin || state.settings.defaultRemind; }
+  save(); scheduleAll(); renderAll();
+  toast('Återställd till ' + back + ' prioritet – precis som innan');
+}
+
+function movePriority(c, p) {
+  if (c.priority === p) return;
+  clearTimer(c.id);
+  c.priority = p;
+  if (p === 'high') {
+    c.remindMin = c.remindMin || state.settings.defaultRemind;
+    c.remindBase = Date.now(); c.lastRemindAt = null; c.remindDismissed = false; c.snoozeUntil = null;
+  } else {
+    c.urgent = false; c.remindDismissed = true; c.snoozeUntil = null;
+  }
+  save(); scheduleAll(); renderAll();
+  toast('Flyttad till ' + p + ' prioritet');
+}
+
+function deleteCard(id) {
+  const i = state.cards.findIndex(c => c.id === id);
+  if (i < 0) return;
+  clearTimer(id);
+  const removed = state.cards[i];
+  ui.lastDeleted = { card: removed, index: i };
+  state.cards.splice(i, 1);
+  if (ui.editingId === id) ui.editingId = null;
+  save(); scheduleAll(); renderAll();
+  toast('Kort raderat', 'ok', {
+    actionLabel: 'Ångra',
+    onAction: () => {
+      if (!ui.lastDeleted) return;
+      state.cards.splice(Math.min(ui.lastDeleted.index, state.cards.length), 0, ui.lastDeleted.card);
+      ui.lastDeleted = null;
+      save(); scheduleAll(); renderAll();
+      toast('Kortet är tillbaka');
+    }
+  });
+}
+
+function copyOrder(text) {
+  const done = () => toast('Ordernummer kopierat: ' + esc(text));
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => legacyCopy(text, done));
+  } else legacyCopy(text, done);
+}
+function legacyCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('Kunde inte kopiera', 'err'); }
+  ta.remove();
+}
+
+function saveEdit(cardEl) {
+  const c = findCard(cardEl.dataset.id); if (!c) return;
+  const order = cardEl.querySelector('[name="eOrder"]').value.trim();
+  const action = cardEl.querySelector('[name="eAction"]').value.trim();
+  const note = cardEl.querySelector('[name="eNote"]').value.trim();
+  if (!order) { cardEl.querySelector('[name="eOrder"]').classList.add('invalid', 'shake'); setTimeout(() => cardEl.querySelector('[name="eOrder"]').classList.remove('shake'), 600); return; }
+  const oldPrio = c.priority;
+  c.order = order; c.action = action; c.note = note;
+  if (oldPrio !== c.priority) {
+    clearTimer(c.id);
+    if (c.priority === 'high') { c.remindBase = Date.now(); c.lastRemindAt = null; c.remindDismissed = false; c.remindMin = c.remindMin || state.settings.defaultRemind; }
+    else { c.urgent = false; c.remindDismissed = true; }
+  }
+  ui.editingId = null;
+  save(); scheduleAll(); renderAll();
+  toast('Kortet uppdaterat');
+}
+
+// ============================================================
+//  FORMULÄR (nytt kort)
+// ============================================================
+function setFormPrio(p) {
+  ui.formPrio = p;
+  $('#prioSeg .seg-low').className = 'seg-low rounded-lg px-3 py-1.5 text-xs font-semibold transition ' + (p === 'low' ? 'bg-sky-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200');
+  $('#prioSeg .seg-high').className = 'seg-high rounded-lg px-3 py-1.5 text-xs font-semibold transition ' + (p === 'high' ? 'bg-rose-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200');
+  $('#remindPicker').classList.toggle('hidden', p !== 'high');
+}
+function setFormRemind(min) {
+  ui.formRemind = min;
+  $$('#remindPicker .rm').forEach(b => {
+    const active = +b.dataset.min === min;
+    b.className = 'rm rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ' + (active ? 'bg-rose-500 text-white shadow' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200');
+  });
+}
+function openForm() {
+  ui.formOpen = true;
+  $('#formWrap').classList.remove('hidden');
+  setFormPrio(ui.formPrio); setFormRemind(ui.formRemind);
+  setTimeout(() => $('#fOrder').focus(), 60);
+}
+function closeForm() {
+  ui.formOpen = false;
+  $('#formWrap').classList.add('hidden');
+  ['#fOrder', '#fAction', '#fNote'].forEach(s => { const el = $(s); el.value = ''; el.classList.remove('invalid'); });
+}
+$('#newForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const order = $('#fOrder').value.trim();
+  const action = $('#fAction').value.trim();
+  let ok = true;
+  if (!order) { $('#fOrder').classList.add('invalid', 'shake'); setTimeout(() => $('#fOrder').classList.remove('shake'), 600); ok = false; }
+  if (!ok) return;
+  addCard({ order, action, note: $('#fNote').value.trim(), priority: ui.formPrio, remindMin: ui.formRemind });
+  // Behåll formuläret öppet för snabb inmatning av flera, men rensa fälten:
+  ['#fOrder', '#fAction', '#fNote'].forEach(s => { $(s).value = ''; $(s).classList.remove('invalid'); });
+  $('#fOrder').focus();
+});
+['#fOrder', '#fAction', '#fNote'].forEach(s => $(s).addEventListener('input', e => e.target.classList.remove('invalid')));
+$('#fNote').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('#newForm').requestSubmit(); });
+
+// ============================================================
+//  DELEGERADE KLICK-HÄNDELSER
+// ============================================================
+const authPanel = $('#authPanel');
+document.addEventListener('click', e => {
+  if (!e.target.closest('#authPanel') && !e.target.closest('#btnAuth')) authPanel.classList.add('hidden');
+
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  const cardEl = el.closest('[data-id]');
+  const id = cardEl ? cardEl.dataset.id : null;
+
+  switch (a) {
+    case 'open-form': ui.formOpen ? closeForm() : openForm(); break;
+    case 'close-form': closeForm(); break;
+    case 'set-form-prio': setFormPrio(el.dataset.prio); break;
+    case 'set-form-remind': setFormRemind(+el.dataset.min); break;
+
+    case 'copy': {
+      const c = findCard(id);
+      const text = c ? c.order : (ui.testCard && id === '__test' ? ui.testCard.order : null);
+      if (text) copyOrder(text);
+      break;
+    }
+    case 'complete': completeCard(id); break;
+    case 'revert': revertCard(id); break;
+    case 'prio-toggle': { const c = findCard(id); if (c) movePriority(c, c.priority === 'high' ? 'low' : 'high'); break; }
+    case 'delete': deleteCard(id); break;
+    case 'edit': ui.editingId = id; renderAll(); setTimeout(() => { const inp = document.querySelector(`[data-id] [name="eOrder"]`); inp && inp.focus(); }, 50); break;
+    case 'edit-cancel': ui.editingId = null; renderAll(); break;
+    case 'edit-save': saveEdit(cardEl); break;
+    case 'edit-prio': { const c = findCard(id); if (c) { c.priority = el.dataset.prio; renderAll(); } break; }
+
+    case 'filter': state.settings.filter = el.dataset.v; save(); renderAll(); break;
+    case 'view': state.settings.view = el.dataset.v; save(); renderAll(); break;
+    case 'sort': state.settings.sort = state.settings.sort === 'desc' ? 'asc' : 'desc'; save(); renderAll(); break;
+    case 'toggle-done': state.settings.showDone = !state.settings.showDone; save(); renderAll(); break;
+    case 'clear-search': ui.query = ''; $('#searchInput').value = ''; renderAll(); $('#searchInput').focus(); break;
+
+    case 'theme-toggle': setTheme(state.settings.theme === 'dark' ? 'light' : 'dark'); break;
+    case 'theme-set': setTheme(el.dataset.v); break;
+
+    case 'settings-open': openSettings(); break;
+    case 'settings-close': closeSettings(); break;
+    case 'test-sound': playRemind(); break;
+    case 'test-remind': testReminder(); break;
+    case 'export': exportData(); break;
+    case 'import': armedImport(el); break;
+    case 'del-done': armedDelete(el, 'done'); break;
+    case 'del-all': armedDelete(el, 'all'); break;
+
+    case 'auth-toggle': authPanel.classList.toggle('hidden'); renderAuth(); break;
+    case 'signin': doAuth(false, el); break;
+    case 'signup': doAuth(true, el); break;
+    case 'signout': fbAuth && fbAPI.signOut && fbAPI.signOut(fbAuth).catch(() => {}); break;
+
+    case 'remind-done':
+      if (id === '__test') { ui.testCard = null; renderReminders(); celebrate(); toast('Testet fungerar – snyggt!'); }
+      else completeCard(id);
+      break;
+    case 'remind-snooze':
+      if (id === '__test') { ui.testCard = null; renderReminders(); toast('Test-påminnelse snoozad (på låtsas)'); }
+      else snooze(id);
+      break;
+    case 'remind-dismiss':
+      if (id === '__test') { ui.testCard = null; renderReminders(); }
+      else dismissRemind(id);
+      break;
+  }
+});
+
+// ============================================================
+//  SÖK
+// ============================================================
+$('#searchInput').addEventListener('input', e => { ui.query = e.target.value; renderAll(); });
+
+// ============================================================
+//  DRAG & DROP (mellan låg/hög-kolumner)
+// ============================================================
+board.addEventListener('dragstart', e => {
+  const el = e.target.closest('.card');
+  if (!el || ui.editingId) { e.preventDefault(); return; }
+  ui.dragId = el.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', el.dataset.id); } catch (err) {}
+  setTimeout(() => el.classList.add('dragging'), 0);
+});
+board.addEventListener('dragend', () => { ui.dragId = null; $$('.card.dragging').forEach(x => x.classList.remove('dragging')); $$('.dz-over').forEach(z => z.classList.remove('dz-over')); });
+board.addEventListener('dragover', e => {
+  const z = e.target.closest('.dropzone'); if (!z) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  z.classList.add('dz-over');
+});
+board.addEventListener('dragleave', e => {
+  const z = e.target.closest('.dropzone');
+  if (z && !z.contains(e.relatedTarget)) z.classList.remove('dz-over');
+});
+board.addEventListener('drop', e => {
+  const z = e.target.closest('.dropzone'); if (!z) return;
+  e.preventDefault();
+  z.classList.remove('dz-over');
+  const c = findCard(ui.dragId);
+  if (c) movePriority(c, z.dataset.prio);
+  ui.dragId = null;
+});
+
+// ============================================================
+//  TEMA
+// ============================================================
+function setTheme(t) {
+  state.settings.theme = t;
+  document.documentElement.classList.toggle('dark', t === 'dark');
+  save(); syncSettingsUI();
+}
+function applyTheme() { document.documentElement.classList.toggle('dark', state.settings.theme === 'dark'); }
+
+// ============================================================
+//  INSTÄLLNINGAR
+// ============================================================
+const drawer = $('#drawer'), overlay = $('#drawerOverlay');
+function openSettings() { drawer.classList.remove('translate-x-full'); overlay.classList.remove('opacity-0', 'pointer-events-none'); syncSettingsUI(); }
+function closeSettings() { drawer.classList.add('translate-x-full'); overlay.classList.add('opacity-0', 'pointer-events-none'); disarmDanger(); }
+overlay.addEventListener('click', closeSettings);
+
+function syncSettingsUI() {
+  const s = state.settings;
+  $('#setDelivery').value = s.delivery;
+  $('#setSound').value = s.sound;
+  $('#setVolume').value = Math.round(s.volume * 100);
+  $('#volLabel').textContent = Math.round(s.volume * 100) + '%';
+  $('#setRepeat').checked = !!s.repeatRemind;
+  $('#setDefaultRemind').value = String(s.defaultRemind);
+  $('#setSnooze').value = String(s.snoozeMin);
+  $('#setConfetti').checked = !!s.confettiOn;
+  $('#setDoneSound').checked = !!s.doneSoundOn;
+  $('#setBuddy').checked = !!s.buddyOn;
+  $$('.theme-seg').forEach(b => {
+    const active = b.dataset.v === s.theme;
+    b.className = 'theme-seg rounded-lg px-3 py-1.5 text-xs font-semibold transition ' + (active ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow' : 'text-zinc-500 dark:text-zinc-400');
+  });
+}
+$('#setDelivery').addEventListener('change', async e => {
+  state.settings.delivery = e.target.value; save();
+  if ((e.target.value === 'system' || e.target.value === 'both') && 'Notification' in window && Notification.permission === 'default') {
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') toast('Systemnotiser blockerade – kolla webbläsarens inställningar', 'err');
+  }
+});
+$('#setSound').addEventListener('change', e => { state.settings.sound = e.target.value; save(); playRemind(); });
+$('#setVolume').addEventListener('input', e => { state.settings.volume = e.target.value / 100; $('#volLabel').textContent = e.target.value + '%'; save(); });
+$('#setVolume').addEventListener('change', () => playRemind());
+$('#setRepeat').addEventListener('change', e => { state.settings.repeatRemind = e.target.checked; save(); scheduleAll(); });
+$('#setDefaultRemind').addEventListener('change', e => { state.settings.defaultRemind = +e.target.value; save(); });
+$('#setSnooze').addEventListener('change', e => { state.settings.snoozeMin = +e.target.value; save(); });
+$('#setConfetti').addEventListener('change', e => { state.settings.confettiOn = e.target.checked; save(); if (e.target.checked) confettiSides(); });
+$('#setDoneSound').addEventListener('change', e => { state.settings.doneSoundOn = e.target.checked; save(); if (e.target.checked) playDone(); });
+$('#setBuddy').addEventListener('change', e => { state.settings.buddyOn = e.target.checked; save(); if (e.target.checked) showBuddy(); });
+
+function testReminder() {
+  if (state.settings.delivery !== 'system') {
+    ui.testCard = { id: '__test', order: 'TEST-1234', action: 'Så här ser en påminnelse ut', createdAt: Date.now() - state.settings.defaultRemind * 60000 };
+  }
+  playRemind();
+  notify('Testpåminnelse – Order TEST-1234', 'Så här ser en systemnotis ut.');
+  if (state.settings.delivery === 'system') toast('Testpåminnelse skickad som systemnotis');
+  renderReminders();
+}
+
+// ---------- Export / Import ----------
+function exportData() {
+  const payload = { app: 'OrderKoll', version: 1, exportedAt: new Date().toISOString(), cards: state.cards, settings: state.settings };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `orderkoll-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('Backup exporterad (' + state.cards.length + ' kort)');
+}
+let importTimer = null;
+function armedImport(btn) {
+  if (!ui.importArmed) {
+    ui.importArmed = true;
+    $('#importLabel').textContent = 'Säker? Klicka igen för att välja fil';
+    $('#importSub').textContent = 'Nuvarande kort ersätts av filens innehåll';
+    btn.classList.add('!border-amber-300');
+    clearTimeout(importTimer);
+    importTimer = setTimeout(disarmImport, 6000);
+    return;
+  }
+  disarmImport();
+  $('#importFile').click();
+}
+function disarmImport() {
+  ui.importArmed = false;
+  $('#importLabel').textContent = 'Importera backup';
+  $('#importSub').textContent = 'Återställ från en exporterad fil (ersätter nuvarande)';
+  $('#importBtn').classList.remove('!border-amber-300');
+}
+$('#importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const arr = Array.isArray(data) ? data : data.cards;
+      if (!Array.isArray(arr)) throw new Error('format');
+      const norm = arr.filter(c => c && typeof c.order === 'string').map(c => ({
+        id: c.id || uid(),
+        order: String(c.order || ''), action: String(c.action || ''), note: String(c.note || ''),
+        priority: c.priority === 'high' ? 'high' : 'low',
+        status: c.status === 'done' ? 'done' : 'active',
+        createdAt: +c.createdAt || Date.now(), doneAt: c.doneAt ? +c.doneAt : null,
+        prevPriority: c.prevPriority === 'high' ? 'high' : (c.prevPriority === 'low' ? 'low' : (c.priority === 'high' ? 'high' : 'low')),
+        remindMin: +c.remindMin || state.settings.defaultRemind,
+        remindBase: +c.remindBase || Date.now(), lastRemindAt: null,
+        snoozeUntil: null, remindDismissed: !!c.remindDismissed, urgent: false
+      }));
+      state.cards = norm;
+      if (data.settings && typeof data.settings === 'object') state.settings = { ...DEFAULTS, ...data.settings };
+      ui.editingId = null;
+      applyTheme(); syncSettingsUI();
+      save(); scheduleAll(); renderAll();
+      toast('Import klar – ' + norm.length + ' kort återställda');
+    } catch (err) {
+      toast('Kunde inte läsa filen – är det en OrderKoll-backup?', 'err', { duration: 6000 });
+    }
+  };
+  reader.readAsText(file);
+});
+
+// ---------- Dubbelbekräftad radering ----------
+let dangerTimer = null;
+function disarmDanger() {
+  ui.delDoneArmed = ui.delAllArmed = false;
+  clearTimeout(dangerTimer);
+  $('#delDoneLabel').textContent = 'Radera alla avklarade kort';
+  $('#delDoneSub').textContent = 'Klicka två gånger för att bekräfta';
+  $('#delDoneBtn').classList.remove('!border-amber-400', '!bg-amber-500/10');
+  $('#delAllLabel').textContent = 'Radera ALLA kort';
+  $('#delAllSub').textContent = 'Både sparade och avklarade – klicka två gånger';
+  $('#delAllBtn').classList.remove('!bg-rose-500/10');
+}
+function armedDelete(btn, which) {
+  const isAll = which === 'all';
+  const armedKey = isAll ? 'delAllArmed' : 'delDoneArmed';
+  if (!ui[armedKey]) {
+    disarmDanger();
+    ui[armedKey] = true;
+    if (isAll) {
+      $('#delAllLabel').textContent = 'BEKRÄFTA: radera alla ' + state.cards.length + ' kort?';
+      $('#delAllSub').textContent = 'Kan inte ångras – klicka en gång till inom 6 sekunder';
+      $('#delAllBtn').classList.add('!bg-rose-500/10');
+    } else {
+      const n = state.cards.filter(c => c.status === 'done').length;
+      $('#delDoneLabel').textContent = 'BEKRÄFTA: radera ' + n + ' avklarade kort?';
+      $('#delDoneSub').textContent = 'Kan inte ångras – klicka en gång till inom 6 sekunder';
+      $('#delDoneBtn').classList.add('!border-amber-400', '!bg-amber-500/10');
+    }
+    clearTimeout(dangerTimer);
+    dangerTimer = setTimeout(disarmDanger, 6000);
+    return;
+  }
+  disarmDanger();
+  if (isAll) {
+    state.cards = [];
+    [...timers.keys()].forEach(clearTimer);
+    ui.editingId = null; ui.testCard = null;
+    save(); renderAll();
+    toast('Alla kort har raderats');
+  } else {
+    const before = state.cards.length;
+    state.cards = state.cards.filter(c => c.status !== 'done');
+    save(); renderAll();
+    toast((before - state.cards.length) + ' avklarade kort raderade');
+  }
+}
+
+// ============================================================
+//  TANGENTBORDSGENVÄGAR
+// ============================================================
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag);
+  if (e.key === 'Escape') {
+    if (!drawer.classList.contains('translate-x-full')) { closeSettings(); return; }
+    if (!authPanel.classList.contains('hidden')) { authPanel.classList.add('hidden'); return; }
+    if (ui.editingId) { ui.editingId = null; renderAll(); return; }
+    if (ui.formOpen) { closeForm(); return; }
+    if (document.activeElement === $('#searchInput')) { document.activeElement.blur(); return; }
+    return;
+  }
+  if (typing) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'n') { e.preventDefault(); ui.formOpen ? $('#fOrder').focus() : openForm(); }
+  else if (e.key === '/') { e.preventDefault(); $('#searchInput').focus(); }
+  else if (k === 't') { setTheme(state.settings.theme === 'dark' ? 'light' : 'dark'); }
+});
+
+// ============================================================
+//  FIREBASE – inloggning & molnsynk
+// ============================================================
+let fbApp = null, fbAuth = null, fbDb = null, fbUser = null, fbAPI = {};
+let unsubSnap = null, pushTimer = null, suppressPush = false, syncFailed = false;
+const deviceId = (() => {
+  let d = localStorage.getItem(DEV_KEY);
+  if (!d) { d = uid(); try { localStorage.setItem(DEV_KEY, d); } catch (e) {} }
+  return d;
+})();
+
+const AUTH_ERRS = {
+  'auth/invalid-credential': 'Fel e-post eller lösenord.',
+  'auth/wrong-password': 'Fel lösenord.',
+  'auth/user-not-found': 'Inget konto finns med den e-posten – skapa konto först.',
+  'auth/email-already-in-use': 'E-posten är redan registrerad – logga in istället.',
+  'auth/weak-password': 'Lösenordet måste vara minst 6 tecken.',
+  'auth/invalid-email': 'Ogiltig e-postadress.',
+  'auth/too-many-requests': 'För många försök – vänta en liten stund.',
+  'auth/operation-not-allowed': 'Aktivera "E-post/Lösenord" under Authentication → Sign-in method i Firebase Console.',
+  'auth/network-request-failed': 'Nätverksfel – kontrollera din anslutning.'
+};
+
+async function bootFirebase() {
+  try {
+    const [appM, authM, fsM] = await Promise.all([
+      import(FBV + 'firebase-app.js'),
+      import(FBV + 'firebase-auth.js'),
+      import(FBV + 'firebase-firestore.js')
+    ]);
+    fbAPI = { ...authM, ...fsM };
+    fbApp = appM.initializeApp(FIREBASE_CONFIG);
+    fbAuth = authM.getAuth(fbApp);
+    fbDb = fsM.getFirestore(fbApp);
+    authM.onAuthStateChanged(fbAuth, onAuthChanged);
+  } catch (e) {
+    console.warn('Firebase kunde inte initieras, fortsätter offline:', e);
+    setSync('err', 'Firebase SDK kunde inte laddas – offline-läge.');
+  }
+  renderAuth();
+}
+
+async function doAuth(signup, btn) {
+  const email = $('#authEmail').value.trim();
+  const pass = $('#authPass').value;
+  const errEl = $('#authErr');
+  errEl.classList.add('hidden');
+  if (!email || !pass) { errEl.textContent = 'Fyll i både e-post och lösenord.'; errEl.classList.remove('hidden'); return; }
+  if (!fbAuth) { errEl.textContent = 'Firebase är inte laddat ännu – vänta en sekund och försök igen.'; errEl.classList.remove('hidden'); return; }
+  const original = btn.textContent;
+  btn.textContent = 'Vänta…'; btn.disabled = true;
+  try {
+    if (signup) await fbAPI.createUserWithEmailAndPassword(fbAuth, email, pass);
+    else await fbAPI.signInWithEmailAndPassword(fbAuth, email, pass);
+    $('#authPass').value = '';
+    toast(signup ? 'Konto skapat – välkommen!' : 'Inloggad – synkning igång');
+  } catch (e) {
+    errEl.textContent = AUTH_ERRS[e.code] || ('Fel: ' + (e.code || e.message));
+    errEl.classList.remove('hidden');
+  }
+  btn.textContent = original; btn.disabled = false;
+}
+$('#authPass') && $('#authPass').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(false, $('#authPanel [data-action="signin"]')); });
+
+function onAuthChanged(user) {
+  fbUser = user || null;
+  if (unsubSnap) { try { unsubSnap(); } catch (e) {} unsubSnap = null; }
+  if (user) { setSync('syncing'); connectSync(); }
+  else setSync('off');
+  renderAuth();
+}
+
+function syncRef() { return fbAPI.doc(fbDb, 'users', fbUser.uid); }
+
+async function connectSync() {
+  if (!fbUser) return;
+  try {
+    const snap = await fbAPI.getDoc(syncRef());
+    if (snap.exists()) {
+      const d = snap.data();
+      if ((d.updatedAt || 0) > (state.meta.updatedAt || 0)) applyRemote(d);
+      else await pushNow();
+    } else {
+      await pushNow();
+    }
+    unsubSnap = fbAPI.onSnapshot(syncRef(), s => {
+      if (!s.exists()) return;
+      const d = s.data();
+      if (d.deviceId === deviceId) return; // egen skrivning
+      if ((d.updatedAt || 0) > (state.meta.updatedAt || 0)) applyRemote(d);
+    }, err => syncError(err));
+    setSync('ok');
+  } catch (e) { syncError(e); }
+}
+
+function applyRemote(d) {
+  try {
+    const parsed = typeof d.data === 'string' ? JSON.parse(d.data) : d.data;
+    suppressPush = true;
+    state = {
+      cards: Array.isArray(parsed.cards) ? parsed.cards : [],
+      settings: { ...DEFAULTS, ...(parsed.settings || {}) },
+      meta: { updatedAt: d.updatedAt || Date.now() }
+    };
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    suppressPush = false;
+    ui.editingId = null;
+    applyTheme(); syncSettingsUI();
+    [...timers.keys()].forEach(clearTimer);
+    scheduleAll(); renderAll();
+    setSync('ok');
+    toast('Synkade senaste datan från molnet');
+  } catch (e) { console.warn('applyRemote-fel', e); }
+}
+
+function schedulePush() {
+  if (!fbUser || !fbDb || suppressPush) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 900);
+}
+async function pushNow() {
+  if (!fbUser || !fbDb) return;
+  setSync('syncing');
+  try {
+    await fbAPI.setDoc(syncRef(), {
+      data: JSON.stringify({ cards: state.cards, settings: state.settings }),
+      updatedAt: state.meta.updatedAt,
+      deviceId
+    }, { merge: true });
+    setSync('ok');
+  } catch (e) { syncError(e); }
+}
+
+function setSync(status, extra) {
+  ui.syncStatus = status;
+  const dot = $('#authDot'), sd = $('#syncDot'), st = $('#syncText'), se = $('#syncErr');
+  if (dot) dot.className = 'absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-zinc-100 dark:ring-[#0b0b0f] ' +
+    (status === 'ok' ? 'bg-emerald-500' : status === 'syncing' ? 'bg-amber-400 pulse-dot' : status === 'err' ? 'bg-rose-500' : 'bg-zinc-400');
+  if (sd) sd.className = 'h-2 w-2 rounded-full ' + (status === 'ok' ? 'bg-emerald-500' : status === 'syncing' ? 'bg-amber-400' : 'bg-rose-500');
+  if (st) st.textContent = status === 'ok' ? 'Synkad' : status === 'syncing' ? 'Synkar…' : status === 'err' ? 'Synkfel' : 'Ej inloggad';
+  if (se) { if (extra) { se.textContent = extra; se.classList.remove('hidden'); } else se.classList.add('hidden'); }
+}
+function syncError(e) {
+  console.warn('Synkfel:', e);
+  const code = e && e.code;
+  let msg = null;
+  if (code === 'permission-denied') msg = 'Åtkomst nekad. Skapa en Firestore-databas i Firebase Console och lägg in säkerhetsreglerna som visas under inloggningsrutan.';
+  else if (code === 'unavailable') msg = 'Molnet är tillfälligt oåtkomligt – försöker igen automatiskt.';
+  setSync('err', msg);
+  if (msg && !syncFailed) { syncFailed = true; toast(msg, 'err', { duration: 9000 }); }
+}
+
+function renderAuth() {
+  const loggedIn = !!fbUser;
+  $('#authLoggedOut').classList.toggle('hidden', loggedIn);
+  $('#authLoggedIn').classList.toggle('hidden', !loggedIn);
+  if (loggedIn) {
+    $('#authUserEmail').textContent = fbUser.email || '';
+    $('#authAvatar').textContent = (fbUser.email || '?').slice(0, 2).toUpperCase();
+    setSync(ui.syncStatus === 'err' ? 'err' : 'ok');
+  } else {
+    setSync('off');
+  }
+}
+
+// ============================================================
+//  UPPSTART
+// ============================================================
+applyTheme();
+setFormPrio(ui.formPrio);
+setFormRemind(ui.formRemind);
+syncSettingsUI();
+renderAll();
+scheduleAll();
+bootFirebase();
+
+// Håll tider färska & fånga försenade påminnelser vid återbesök
+setInterval(() => {
+  if (!ui.editingId) { renderBoard(); renderDone(); renderStats(); }
+}, 60000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { scheduleAll(); if (!ui.editingId) renderAll(); }
+});
+window.addEventListener('focus', () => scheduleAll());
+</script>
+</body>
+</html>

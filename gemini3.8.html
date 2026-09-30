@@ -1,0 +1,2795 @@
+<!DOCTYPE html>
+<html lang="sv" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OrderPrioritering & Hantering</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            },
+            highprio: {
+              light: '#fef2f2',
+              border: '#ef4444',
+              badge: '#dc2626',
+              ring: '#f87171',
+              darkBg: '#2a1215',
+              darkBorder: '#991b1b'
+            },
+            lowprio: {
+              light: '#f0f9ff',
+              border: '#0284c7',
+              badge: '#0369a1',
+              ring: '#38bdf8',
+              darkBg: '#082338',
+              darkBorder: '#075985'
+            },
+            completed: {
+              light: '#f8fafc',
+              border: '#64748b',
+              badge: '#475569',
+              darkBg: '#1e293b',
+              darkBorder: '#334155'
+            }
+          },
+          animation: {
+            'bounce-subtle': 'bounceSubtle 2s infinite',
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'slide-up': 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+            'pop-in': 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+          },
+          keyframes: {
+            bounceSubtle: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-4px)' }
+            },
+            slideUp: {
+              '0%': { transform: 'translateY(100%)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' }
+            },
+            popIn: {
+              '0%': { transform: 'scale(0.8)', opacity: '0' },
+              '100%': { transform: 'scale(1)', opacity: '1' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
+
+  <style>
+    /* Custom scrollbars & aesthetics */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.7);
+    }
+    .custom-ring:focus-within {
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+    }
+    /* Mascot Animation */
+    @keyframes mascotEnter {
+      0% { transform: translateY(120%) scale(0.6); opacity: 0; }
+      70% { transform: translateY(-10%) scale(1.05); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    @keyframes thumbsUpWave {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(-12deg); }
+      75% { transform: rotate(15deg); }
+    }
+    .mascot-active {
+      animation: mascotEnter 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    .thumb-wiggle {
+      animation: thumbsUpWave 1.2s ease-in-out infinite;
+      transform-origin: bottom center;
+    }
+    /* Collapsible smooth height */
+    .expand-transition {
+      transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-full flex flex-col font-sans transition-colors duration-200">
+
+  <!-- ================= TOP HEADER ================= -->
+  <header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16 gap-3">
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                OrderPrioritering
+              </h1>
+              <span id="syncStatusBadge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span id="syncStatusText">Lokalt sparad</span>
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Håll koll på dagens ordrar & prioriteringar</p>
+          </div>
+        </div>
+
+        <!-- Quick Summary Counters -->
+        <div class="hidden md:flex items-center gap-2 text-xs">
+          <div class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/60 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+            Hög: <span id="countHighBadge" class="font-bold">0</span>
+          </div>
+          <div class="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200/60 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900/60 font-medium flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+            Låg: <span id="countLowBadge" class="font-bold">0</span>
+          </div>
+          <div class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60 font-medium flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+            </svg>
+            Klara idag: <span id="countDoneTodayBadge" class="font-bold">0</span>
+          </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- Inloggning / Molnsynk Knapp -->
+          <button id="authBtn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition">
+            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+            <span id="authBtnText" class="hidden sm:inline">Logga in</span>
+          </button>
+
+          <!-- Theme Toggle -->
+          <button id="themeToggleBtn" aria-label="Växla tema" title="Växla mellan ljust och mörkt läge" class="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <!-- Sun icon for dark mode -->
+            <svg id="sunIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+            </svg>
+            <!-- Moon icon for light mode -->
+            <svg id="moonIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+            </svg>
+          </button>
+
+          <!-- Settings Button -->
+          <button id="openSettingsBtn" aria-label="Inställningar" title="Öppna inställningar" class="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= IN-DOCUMENT REMINDER NOTIFICATION BANNER ================= -->
+  <div id="reminderToastContainer" class="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none">
+    <!-- Populated by reminder triggers -->
+  </div>
+
+  <!-- ================= MAIN CONTAINER ================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-6">
+
+    <!-- ================= TOP TOOLBAR & CONTROLS ================= -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      
+      <!-- Primary Action: New Order Toggle Button -->
+      <div class="flex items-center gap-2">
+        <button id="toggleNewCardBtn" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm shadow-blue-500/20 active:scale-95 transition-all">
+          <svg id="toggleNewCardIcon" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+          <span>Lägg till ny order</span>
+          <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-blue-700 text-blue-100 rounded border border-blue-500/40">N</kbd>
+        </button>
+
+        <button id="quickStatsBtn" title="Visa dagssammanfattning" class="p-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 md:justify-end">
+        <!-- Search Input -->
+        <div class="relative min-w-[200px] flex-1 sm:max-w-xs">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </div>
+          <input type="text" id="searchInput" placeholder="Sök ordernr, åtgärd, text..." class="w-full pl-9 pr-7 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+          <button id="clearSearchBtn" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hidden">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filter Segmented Control -->
+        <div class="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-medium border border-slate-200/80 dark:border-slate-700">
+          <button data-filter="all" class="filter-btn px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs transition">Alla</button>
+          <button data-filter="high" class="filter-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">⚡ Hög</button>
+          <button data-filter="low" class="filter-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">🌱 Låg</button>
+        </div>
+
+        <!-- View Mode Switch: 2 Columns vs Combined Chronological -->
+        <div class="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-medium border border-slate-200/80 dark:border-slate-700" title="Växla visningsläge">
+          <button id="viewSplitBtn" class="view-btn px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs flex items-center gap-1 transition" title="Separerade fält (Hög och Låg var för sig)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"></path>
+            </svg>
+            <span class="hidden sm:inline">2 Fält</span>
+          </button>
+          <button id="viewTimelineBtn" class="view-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition" title="Samlad lista i tidsordning">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+            </svg>
+            <span class="hidden sm:inline">Samlad lista</span>
+          </button>
+        </div>
+
+        <!-- Sort Menu -->
+        <select id="sortSelect" class="text-xs py-2 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+          <option value="newest">Nyast längst upp</option>
+          <option value="oldest">Äldst först</option>
+          <option value="orderno">Ordernummer (A-Ö)</option>
+          <option value="reminder">Närmaste påminnelse</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- ================= MINIMIZABLE ADD NEW ORDER BOX (NO POPUP!) ================= -->
+    <section id="newCardSection" class="hidden overflow-hidden transition-all duration-300 ease-in-out">
+      <div class="bg-white dark:bg-slate-900 border-2 border-blue-500/40 rounded-2xl p-5 shadow-lg shadow-blue-500/5 relative">
+        <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+            <h2 class="text-base font-semibold text-slate-900 dark:text-white">Lägg till nytt orderkort</h2>
+            <span class="text-xs text-slate-400 font-normal">(Ingen popup – fyll i direkt här)</span>
+          </div>
+          <button id="closeNewCardBtn" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <form id="newCardForm" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
+            
+            <!-- Ordernummer -->
+            <div class="sm:col-span-4">
+              <label for="newOrderNumber" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Ordernummer <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 font-mono text-sm">#</span>
+                <input type="text" id="newOrderNumber" required placeholder="t.ex. 84920" class="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+              </div>
+            </div>
+
+            <!-- Prioritetsväljare -->
+            <div class="sm:col-span-8">
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Prioritetsgrad <span class="text-rose-500">*</span>
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="relative flex items-center p-2 rounded-xl border cursor-pointer select-none transition border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 hover:bg-rose-50/50 has-[:checked]:border-rose-500 has-[:checked]:bg-rose-50 dark:has-[:checked]:bg-rose-950/40 dark:has-[:checked]:border-rose-500/80">
+                  <input type="radio" name="newPriority" value="high" class="sr-only peer" checked>
+                  <div class="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 peer-checked:border-rose-600 peer-checked:bg-rose-600 flex items-center justify-center mr-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100"></span>
+                  </div>
+                  <div>
+                    <span class="text-xs font-bold text-rose-600 dark:text-rose-400 block">⚡ Hög Prioritet</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Ska bli klar idag</span>
+                  </div>
+                </label>
+
+                <label class="relative flex items-center p-2 rounded-xl border cursor-pointer select-none transition border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 hover:bg-sky-50/50 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-50 dark:has-[:checked]:bg-sky-950/40 dark:has-[:checked]:border-sky-500/80">
+                  <input type="radio" name="newPriority" value="low" class="sr-only peer">
+                  <div class="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 peer-checked:border-sky-600 peer-checked:bg-sky-600 flex items-center justify-center mr-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100"></span>
+                  </div>
+                  <div>
+                    <span class="text-xs font-bold text-sky-600 dark:text-sky-400 block">🌱 Låg Prioritet</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Normal hantering</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Åtgärd -->
+          <div>
+            <label for="newAction" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Åtgärd / Uppgift <span class="text-rose-500">*</span>
+            </label>
+            <input type="text" id="newAction" required placeholder="Vad ska utföras? (t.ex. Kontakta leverantör angående försening)" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+          </div>
+
+          <!-- Anteckning -->
+          <div>
+            <label for="newNotes" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Anteckning (valfritt)
+            </label>
+            <textarea id="newNotes" rows="2" placeholder="Kompletterande detaljer, telefonnummer, felkod eller referenser..." class="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition resize-y"></textarea>
+          </div>
+
+          <!-- Påminnelse-väljare direkt i lägg till-läget -->
+          <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <div>
+                <span class="text-xs font-semibold text-slate-800 dark:text-slate-200">Påminnelse för detta kort</span>
+                <span class="text-[11px] text-slate-500 dark:text-slate-400 block sm:inline sm:ml-1">(ljud + notis när tiden löpt ut)</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <label class="text-xs font-medium text-slate-600 dark:text-slate-300">Påminn efter:</label>
+              <select id="newReminderTime" class="text-xs py-1.5 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+                <option value="60" selected>1 timme (Standard för Hög prio)</option>
+                <option value="15">15 minuter</option>
+                <option value="30">30 minuter</option>
+                <option value="120">2 timmar</option>
+                <option value="none">Ingen påminnelse</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Snabb-etiketter / Quick action tags helper -->
+          <div class="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+            <span class="text-[11px] font-medium">Snabb-infoga:</span>
+            <button type="button" class="quick-tag px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] transition">Ring kund</button>
+            <button type="button" class="quick-tag px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] transition">Inväntar svar</button>
+            <button type="button" class="quick-tag px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] transition">Felsökning</button>
+            <button type="button" class="quick-tag px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] transition">Reservdel beställd</button>
+          </div>
+
+          <!-- Buttons -->
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button type="button" id="cancelNewCardBtn" class="px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              Avbryt <span class="text-[10px] text-slate-400">(Esc)</span>
+            </button>
+            <button type="submit" class="px-5 py-2 text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm shadow-blue-500/20 active:scale-95 transition">
+              Spara orderkort <span class="text-[10px] opacity-80">(Ctrl+Enter)</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ================= ACTIVE CARDS WORKSPACE ================= -->
+
+    <!-- MODE A: DEFAULT 2-COLUMN SEPARATED LAYOUT -->
+    <div id="splitColumnsView" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- HÖG PRIORITET KOLUMN -->
+      <section class="flex flex-col gap-3">
+        <!-- Kolumnrubrik med badge -->
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-3.5 h-3.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/50 flex items-center justify-center">
+              <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+            </div>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
+              ⚡ Hög Prioritet
+            </h2>
+            <span class="text-xs text-rose-600/80 dark:text-rose-400/80 font-medium">(Klara idag)</span>
+          </div>
+          <span id="highPrioCountPill" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
+            0 ordrar
+          </span>
+        </div>
+
+        <!-- High Priority Cards List -->
+        <div id="highPrioCardList" class="flex flex-col gap-3 min-h-[140px]">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- LÅG PRIORITET KOLUMN -->
+      <section class="flex flex-col gap-3">
+        <!-- Kolumnrubrik med badge -->
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-3.5 h-3.5 rounded-full bg-sky-500 shadow-sm shadow-sky-500/50 flex items-center justify-center">
+              <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+            </div>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+              🌱 Låg Prioritet
+            </h2>
+            <span class="text-xs text-sky-600/80 dark:text-sky-400/80 font-medium">(Normal hantering)</span>
+          </div>
+          <span id="lowPrioCountPill" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border border-sky-200 dark:border-sky-900">
+            0 ordrar
+          </span>
+        </div>
+
+        <!-- Low Priority Cards List -->
+        <div id="lowPrioCardList" class="flex flex-col gap-3 min-h-[140px]">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+    </div>
+
+    <!-- MODE B: COMBINED CHRONOLOGICAL TIMELINE VIEW (HIDDEN INITIALLY) -->
+    <div id="timelineView" class="hidden flex flex-col gap-3">
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            Samlade Aktiva Ordrar (Tidsordning)
+          </h2>
+        </div>
+        <span id="combinedCountPill" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+          0 aktiva
+        </span>
+      </div>
+      <div id="combinedCardList" class="flex flex-col gap-3 min-h-[140px]">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- ================= COMPACT AVKLARAT / ARCHIVE SECTION ================= -->
+    <!-- "När det hamnar i avklarat ska det inte längre ta upp viktig plats på skärmen men ändå finnas kvar" -->
+    <section class="mt-4 pt-4 border-t border-slate-200/80 dark:border-slate-800">
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+        
+        <!-- Collapsible Header Banner -->
+        <button id="toggleCompletedArchiveBtn" class="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 flex items-center justify-between text-left transition select-none">
+          <div class="flex items-center gap-2.5">
+            <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">Avklarade ordrar</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400 ml-1.5 hidden sm:inline">(Tar minimal plats – kan återställas till sin kategori)</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <span id="completedCountBadge" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              0 st
+            </span>
+            <svg id="completedChevronIcon" class="w-5 h-5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </div>
+        </button>
+
+        <!-- Collapsible Content -->
+        <div id="completedArchiveContent" class="hidden p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+          
+          <div class="flex items-center justify-between pb-3 mb-2 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-slate-800/80">
+            <span>Klicka på ett ordernummer för att kopiera det. Klicka "Återgå" för att flytta tillbaka till ursprunglig prio.</span>
+            <button id="clearCompletedOnlyBtn" class="text-rose-600 hover:text-rose-700 dark:text-rose-400 text-xs font-medium hover:underline flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+              Rensa endast avklarade
+            </button>
+          </div>
+
+          <div id="completedCardsList" class="flex flex-col gap-2 max-h-[460px] overflow-y-auto pr-1">
+            <!-- Populated by JS -->
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= ANIMATED THUMBS UP CHARACTER (MASCOT) ================= -->
+  <div id="mascotContainer" class="fixed bottom-6 right-6 z-40 hidden pointer-events-none select-none">
+    <div class="relative flex items-end gap-3 pointer-events-auto">
+      <!-- Mascot Speech Bubble -->
+      <div id="mascotBubble" class="bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-4 py-2.5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-bold flex items-center gap-2 max-w-xs animate-pop-in">
+        <span class="text-xl">✨</span>
+        <span id="mascotSpeechText">Grymt jobbat! En mindre att tänka på!</span>
+        <div class="absolute -right-2 bottom-4 w-3 h-3 bg-white dark:bg-slate-800 border-r border-b border-slate-200 dark:border-slate-700 rotate-[-45deg]"></div>
+      </div>
+
+      <!-- Mascot Character (High quality SVG with animated arm giving thumbs up) -->
+      <div class="relative w-24 h-28 mascot-active filter drop-shadow-xl cursor-pointer" id="mascotFigure" title="Klicka för att stänga">
+        <svg viewBox="0 0 100 120" class="w-full h-full overflow-visible">
+          <!-- Mascot Body / Cute Robot Friend -->
+          <defs>
+            <linearGradient id="robotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="100%" stop-color="#1d4ed8" />
+            </linearGradient>
+            <linearGradient id="bellyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#60a5fa" />
+              <stop offset="100%" stop-color="#3b82f6" />
+            </linearGradient>
+          </defs>
+          <!-- Antenna -->
+          <line x1="50" y1="28" x2="50" y2="12" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" />
+          <circle cx="50" cy="10" r="5" fill="#fbbf24">
+            <animate attributeName="r" values="5;6.5;5" dur="1s" repeatCount="indefinite" />
+          </circle>
+          <!-- Head / Body Capsule -->
+          <rect x="22" y="26" width="56" height="66" rx="28" fill="url(#robotGrad)" />
+          <!-- Face Screen -->
+          <rect x="28" y="34" width="44" height="30" rx="14" fill="#0f172a" />
+          <!-- Happy Eyes (curved lines) -->
+          <path d="M37 47 Q42 42 47 47" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" />
+          <path d="M53 47 Q58 42 63 47" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" />
+          <!-- Rosy Cheeks -->
+          <circle cx="34" cy="52" r="3" fill="#f43f5e" opacity="0.8" />
+          <circle cx="66" cy="52" r="3" fill="#f43f5e" opacity="0.8" />
+          <!-- Smile -->
+          <path d="M46 53 Q50 57 54 53" stroke="#38bdf8" stroke-width="2.5" fill="none" stroke-linecap="round" />
+          <!-- Belly Details -->
+          <rect x="36" y="68" width="28" height="16" rx="6" fill="url(#bellyGrad)" opacity="0.6" />
+          <!-- Checkmark on chest -->
+          <path d="M44 76 L48 80 L56 72" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- Left Arm resting -->
+          <path d="M22 62 Q14 70 18 80" stroke="#2563eb" stroke-width="6" stroke-linecap="round" fill="none" />
+          <!-- Right Arm: THUMBS UP WITH ANIMATED WIGGLE -->
+          <g class="thumb-wiggle" style="transform-origin: 76px 65px;">
+            <path d="M76 65 Q86 60 92 50" stroke="#2563eb" stroke-width="6" stroke-linecap="round" fill="none" />
+            <!-- Glove / Hand -->
+            <circle cx="92" cy="48" r="6" fill="#fbbf24" />
+            <!-- Thumb pointing high -->
+            <path d="M92 46 L95 36" stroke="#fbbf24" stroke-width="5" stroke-linecap="round" />
+            <circle cx="95" cy="35" r="2.5" fill="#f59e0b" />
+          </g>
+          <!-- Sparkles -->
+          <text x="88" y="28" font-size="14" fill="#fbbf24">✨</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= COPY NOTIFICATION TOAST ================= -->
+  <div id="copyToast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 dark:bg-white/95 text-white dark:text-slate-900 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 transform transition-all duration-300 opacity-0 translate-y-3 pointer-events-none">
+    <svg class="w-4 h-4 text-emerald-400 dark:text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+    </svg>
+    <span id="copyToastText">Ordernummer kopierat!</span>
+  </div>
+
+  <!-- ================= SETTINGS MODAL ================= -->
+  <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-pop-in">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Inställningar</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Påminnelser, ljud, datahantering & säkerhetskopia</p>
+          </div>
+        </div>
+        <button id="closeSettingsModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="px-6 py-5 overflow-y-auto space-y-6 text-sm">
+        
+        <!-- Påminnelseljud & Volym -->
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+            </svg>
+            Påminnelseljud & Ljudvolym
+          </h4>
+
+          <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+            <!-- Förinställt ljud -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label for="soundPresetSelect" class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Förinställning av påminnelseljud:
+              </label>
+              <div class="flex items-center gap-2">
+                <select id="soundPresetSelect" class="text-xs py-1.5 px-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+                  <option value="chime">Mjuk Klocka (Chime)</option>
+                  <option value="ping">Modern Ping</option>
+                  <option value="marimba">Träklocka / Marimba</option>
+                  <option value="fanfare">Positiv Fanfar</option>
+                  <option value="gong">Djup Gong / Lugn ton</option>
+                </select>
+                <button id="previewSoundBtn" type="button" title="Provlyssna valt ljud" class="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Volymslider -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-600 dark:text-slate-400 font-medium">Volym:</span>
+                <span id="volumeValueLabel" class="font-mono font-bold text-slate-700 dark:text-slate-300">70%</span>
+              </div>
+              <input type="range" id="reminderVolumeSlider" min="0" max="100" value="70" class="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600">
+            </div>
+
+            <!-- Testa påminnelse knapp -->
+            <div class="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+              <span class="text-xs text-slate-500 dark:text-slate-400">Verifiera att du hör ljudet och ser notisen:</span>
+              <button id="testReminderBtn" type="button" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                </svg>
+                Testa påminnelse nu
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notis-kanal: Endast webbsida eller System-prompt -->
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+            </svg>
+            Påminnelsemetod
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="p-3 rounded-2xl border cursor-pointer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50 dark:has-[:checked]:bg-blue-950/30">
+              <div class="flex items-start gap-2.5">
+                <input type="radio" name="notificationChannel" value="web" class="mt-0.5 accent-blue-600" checked>
+                <div>
+                  <span class="text-xs font-bold text-slate-900 dark:text-white block">Endast via webbsidan</span>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Påminnelsekort visas inne på skärmen med ljud</span>
+                </div>
+              </div>
+            </label>
+
+            <label class="p-3 rounded-2xl border cursor-pointer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50 dark:has-[:checked]:bg-blue-950/30">
+              <div class="flex items-start gap-2.5">
+                <input type="radio" name="notificationChannel" value="system" class="mt-0.5 accent-blue-600">
+                <div>
+                  <span class="text-xs font-bold text-slate-900 dark:text-white block">System-prompt (Skrivbordsnotis)</span>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Webbläsarens systemnotis även om fliken inte är aktiv</span>
+                </div>
+              </div>
+            </label>
+          </div>
+          <div id="systemNotifStatusNotice" class="text-xs text-slate-500 dark:text-slate-400 pl-1 hidden">
+            Tillåtelse för skrivbordsnotiser: <span id="systemNotifPermLabel" class="font-bold">standard</span>
+            <button id="requestNotifPermBtn" class="ml-2 text-blue-600 dark:text-blue-400 underline font-semibold">Aktivera behörighet</button>
+          </div>
+        </div>
+
+        <!-- Animerad tummen-upp-karaktär vid avklarat -->
+        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">👍</span>
+            <div>
+              <span class="text-xs font-bold text-slate-900 dark:text-white block">Animerad karaktär med tummen upp</span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400">Visar en glad figur och peppande ord tillsammans med konfetti vid avklarad order</span>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="enableMascotCheckbox" class="sr-only peer" checked>
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+
+        <!-- Export & Backup / Import -->
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+            </svg>
+            Säkerhetskopia (Export & Import)
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button id="exportCardsBtn" class="flex items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 font-medium text-xs text-slate-800 dark:text-slate-200 shadow-xs transition">
+              <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+              Exportera alla kort till fil (.json)
+            </button>
+
+            <label class="flex items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 font-medium text-xs text-slate-800 dark:text-slate-200 shadow-xs cursor-pointer transition">
+              <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+              </svg>
+              <span>Importera från backup-fil</span>
+              <input type="file" id="importFileInput" accept=".json" class="sr-only">
+            </label>
+          </div>
+        </div>
+
+        <!-- Farlig zon: Radera alla sparade & avklarade kort (Dubbel bekräftelse krävs) -->
+        <div class="space-y-3 pt-3 border-t border-rose-200/50 dark:border-rose-950/80">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            Farlig zon
+          </h4>
+          <div class="bg-rose-50 dark:bg-rose-950/30 p-4 rounded-2xl border border-rose-200 dark:border-rose-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span class="text-xs font-bold text-rose-800 dark:text-rose-200 block">Radera alla sparade och avklarade ordrar</span>
+              <span class="text-[11px] text-rose-600 dark:text-rose-400">Rensar allt permanent. Kräver dubbel bekräftelse för säkerhets skull.</span>
+            </div>
+            <button id="deleteAllCardsBtn" type="button" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs whitespace-nowrap active:scale-95 transition">
+              Radera alla kort...
+            </button>
+          </div>
+        </div>
+
+        <!-- Snabbkommandon info -->
+        <div class="bg-slate-100 dark:bg-slate-800/60 p-3 rounded-xl text-xs text-slate-600 dark:text-slate-400 space-y-1">
+          <div class="font-bold text-slate-800 dark:text-slate-200">Tips & Snabbkommandon:</div>
+          <div class="grid grid-cols-2 gap-1 text-[11px]">
+            <div><kbd class="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border text-slate-800 dark:text-slate-200">N</kbd> Skapa ny order</div>
+            <div><kbd class="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border text-slate-800 dark:text-slate-200">Esc</kbd> Stäng / avbryt</div>
+            <div><kbd class="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border text-slate-800 dark:text-slate-200">Ctrl + Enter</kbd> Spara kort</div>
+            <div>Klicka ordernr för att kopiera!</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+        <button id="saveCloseSettingsBtn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition">
+          Stäng
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= DOUBLE CONFIRMATION MODAL FOR DELETING ALL CARDS ================= -->
+  <div id="doubleConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border-2 border-rose-500 shadow-2xl p-6 text-center space-y-4 animate-pop-in">
+      <div class="w-14 h-14 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+      </div>
+
+      <div>
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Radera alla kort permanent?</h3>
+        <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+          Detta raderar <span id="deleteCardCountWarning" class="font-bold text-rose-600">alla aktiva och avklarade ordrar</span>. Åtgärden går INTE att ångra om du inte har en backup-fil!
+        </p>
+      </div>
+
+      <!-- Confirmation Step 2 Requirement: Type 'RADERA' -->
+      <div class="text-left bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-200 dark:border-rose-900 text-xs space-y-2">
+        <label for="deleteConfirmationInput" class="block font-semibold text-rose-900 dark:text-rose-200">
+          För att bekräfta, skriv ordet <span class="font-mono bg-rose-200 dark:bg-rose-800 px-1 py-0.5 rounded text-rose-950 dark:text-rose-100">RADERA</span> nedan:
+        </label>
+        <input type="text" id="deleteConfirmationInput" placeholder="Skriv RADERA här" class="w-full px-3 py-2 text-xs font-mono rounded-lg border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white uppercase focus:ring-2 focus:ring-rose-500 focus:outline-none">
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button id="cancelDoubleConfirmBtn" class="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          Avbryt
+        </button>
+        <button id="executeDeleteAllCardsBtn" disabled class="px-5 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl opacity-40 cursor-not-allowed shadow-sm transition">
+          Ja, radera precis allt
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= FIREBASE AUTH & ONLINE SYNC MODAL ================= -->
+  <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-pop-in">
+      
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Molnsynkronisering</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Logga in för att synka dina ordrar mellan enheter</p>
+          </div>
+        </div>
+        <button id="closeAuthModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Status banner if already logged in -->
+      <div id="loggedInStateSection" class="p-6 hidden space-y-4">
+        <div class="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs space-y-1">
+          <div class="font-bold text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Inloggad & Synkroniserad
+          </div>
+          <div class="text-slate-600 dark:text-slate-300">
+            Konto: <span id="currentAccountEmail" class="font-semibold text-slate-900 dark:text-white"></span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Dina orderkort sparas både lokalt på denna dator och i Firebase Firestore molnet.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="manualSyncNowBtn" class="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Synka nu till molnet
+          </button>
+          <button id="logoutBtn" class="py-2 px-4 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition">
+            Logga ut
+          </button>
+        </div>
+      </div>
+
+      <!-- Login / Signup Form -->
+      <form id="authForm" class="p-6 space-y-4">
+        <div id="authErrorMsg" class="hidden p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs"></div>
+
+        <div>
+          <label for="authEmail" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            E-postadress
+          </label>
+          <input type="email" id="authEmail" required placeholder="din.epost@foretag.se" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+        </div>
+
+        <div>
+          <label for="authPassword" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            Lösenord
+          </label>
+          <input type="password" id="authPassword" required minlength="6" placeholder="Minst 6 tecken" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+        </div>
+
+        <div class="flex items-center justify-between text-xs pt-1">
+          <button type="button" id="toggleAuthModeBtn" class="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+            Inget konto? Skapa ett nytt konto här
+          </button>
+        </div>
+
+        <button type="submit" id="authSubmitBtn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs flex items-center justify-center gap-2 active:scale-95 transition">
+          <span id="authSubmitText">Logga in och synkronisera</span>
+        </button>
+
+        <p class="text-[11px] text-slate-400 text-center">
+          Obs: Appen fungerar alltid 100% lokalt i webbläsaren oavsett om du loggar in eller inte.
+        </p>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ================= SCRIPTS & APPLICATION LOGIC ================= -->
+
+  <!-- Load Firebase App, Auth & Firestore modules -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+    // User's provided Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDQD-MMCPPtcwrylM-y52fjnKIhbf58d9Y",
+      authDomain: "remember2-465bc.firebaseapp.com",
+      projectId: "remember2-465bc",
+      storageBucket: "remember2-465bc.firebasestorage.app",
+      messagingSenderId: "497511091722",
+      appId: "1:497511091722:web:1a53ea92fec94a396199f3"
+    };
+
+    let app = null;
+    let auth = null;
+    let db = null;
+    let currentUser = null;
+
+    try {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      console.log("Firebase initialized successfully");
+    } catch (err) {
+      console.warn("Firebase initialization warning (local mode active):", err);
+    }
+
+    // Expose auth & firestore methods globally for the application
+    window.fbService = {
+      isConfigured: () => !!app,
+      getCurrentUser: () => currentUser,
+      login: async (email, password) => {
+        if (!auth) throw new Error("Firebase Auth ej initierad");
+        return await signInWithEmailAndPassword(auth, email, password);
+      },
+      signup: async (email, password) => {
+        if (!auth) throw new Error("Firebase Auth ej initierad");
+        return await createUserWithEmailAndPassword(auth, email, password);
+      },
+      logout: async () => {
+        if (!auth) return;
+        return await signOut(auth);
+      },
+      syncCardsToCloud: async (cards) => {
+        if (!db || !currentUser) return false;
+        try {
+          const userDocRef = doc(db, "users", currentUser.uid);
+          await setDoc(userDocRef, {
+            cards: cards,
+            lastSynced: new Date().toISOString()
+          }, { merge: true });
+          return true;
+        } catch (e) {
+          console.error("Cloud sync save error:", e);
+          return false;
+        }
+      },
+      fetchCardsFromCloud: async () => {
+        if (!db || !currentUser) return null;
+        try {
+          const userDocRef = doc(db, "users", currentUser.uid);
+          const docSnap = await getDoc(userDocRef);
+          if (docSnap.exists() && docSnap.data().cards) {
+            return docSnap.data().cards;
+          }
+          return null;
+        } catch (e) {
+          console.error("Cloud fetch error:", e);
+          return null;
+        }
+      }
+    };
+
+    // Listen to Firebase Auth state
+    if (auth) {
+      onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        if (window.onAuthChangeHandler) {
+          window.onAuthChangeHandler(user);
+        }
+      });
+    }
+  </script>
+
+  <!-- Main JavaScript Application Logic -->
+  <script>
+    /* ==========================================================
+       SOUND SYNTHESIZER (Web Audio API - Pure JS, zero external audio lag)
+       ========================================================== */
+    class AudioSynthesizer {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            this.ctx = new AudioContextClass();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      getGain(volumePercent) {
+        const vol = Math.max(0, Math.min(100, volumePercent || 70)) / 100;
+        const gainNode = this.ctx.createGain();
+        gainNode.gain.setValueAtTime(vol * 0.35, this.ctx.currentTime);
+        gainNode.connect(this.ctx.destination);
+        return gainNode;
+      }
+
+      // 1. Chime Preset (Soft two-tone bell)
+      playChime(vol = 70) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        const tones = [587.33, 880]; // D5, A5
+        tones.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const noteGain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+          noteGain.gain.setValueAtTime(0, now + idx * 0.12);
+          noteGain.gain.linearRampToValueAtTime(0.8, now + idx * 0.12 + 0.02);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.9);
+
+          osc.connect(noteGain);
+          noteGain.connect(master);
+          osc.start(now + idx * 0.12);
+          osc.stop(now + idx * 0.12 + 0.95);
+        });
+      }
+
+      // 2. Modern Ping (Clean digital bell)
+      playPing(vol = 70) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const noteGain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1046.5, now); // C6
+        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.3); // G5
+
+        noteGain.gain.setValueAtTime(0.9, now);
+        noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+        osc.connect(noteGain);
+        noteGain.connect(master);
+        osc.start(now);
+        osc.stop(now + 0.65);
+      }
+
+      // 3. Marimba Preset (Warm wooden strike)
+      playMarimba(vol = 70) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        const freqs = [392.00, 523.25]; // G4, C5
+        freqs.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const noteGain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + i * 0.08);
+
+          noteGain.gain.setValueAtTime(1.0, now + i * 0.08);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
+
+          osc.connect(noteGain);
+          noteGain.connect(master);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.4);
+        });
+      }
+
+      // 4. Positiv Fanfar
+      playFanfare(vol = 70) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+        notes.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const noteGain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.09);
+
+          noteGain.gain.setValueAtTime(0.8, now + i * 0.09);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.5);
+
+          osc.connect(noteGain);
+          noteGain.connect(master);
+          osc.start(now + i * 0.09);
+          osc.stop(now + i * 0.09 + 0.55);
+        });
+      }
+
+      // 5. Deep Gong / Mjuk ton
+      playGong(vol = 70) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const noteGain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(220, now); // A3
+
+        noteGain.gain.setValueAtTime(0.9, now);
+        noteGain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+        osc.connect(noteGain);
+        noteGain.connect(master);
+        osc.start(now);
+        osc.stop(now + 1.25);
+      }
+
+      // 6. Triumphant Completion Celebration Sound
+      playCelebrationSound(vol = 80) {
+        this.init();
+        if (!this.ctx) return;
+        const master = this.getGain(vol);
+        const now = this.ctx.currentTime;
+
+        // Joyful chord progression: F -> A -> C -> F (bright, uplifting)
+        const notes = [
+          { f: 523.25, t: 0.00, d: 0.4 },  // C5
+          { f: 659.25, t: 0.08, d: 0.4 },  // E5
+          { f: 783.99, t: 0.16, d: 0.4 },  // G5
+          { f: 1046.5, t: 0.24, d: 0.9 },  // C6
+          { f: 1318.5, t: 0.32, d: 0.9 }   // E6 sparkle
+        ];
+
+        notes.forEach(n => {
+          const osc = this.ctx.createOscillator();
+          const noteGain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n.f, now + n.t);
+
+          noteGain.gain.setValueAtTime(0, now + n.t);
+          noteGain.gain.linearRampToValueAtTime(0.8, now + n.t + 0.02);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+
+          osc.connect(noteGain);
+          noteGain.connect(master);
+          osc.start(now + n.t);
+          osc.stop(now + n.t + n.d + 0.05);
+        });
+      }
+
+      // Dispatch based on preset key
+      playPreset(presetKey, vol) {
+        switch (presetKey) {
+          case 'ping': this.playPing(vol); break;
+          case 'marimba': this.playMarimba(vol); break;
+          case 'fanfare': this.playFanfare(vol); break;
+          case 'gong': this.playGong(vol); break;
+          case 'chime':
+          default:
+            this.playChime(vol); break;
+        }
+      }
+    }
+
+    const soundSynth = new AudioSynthesizer();
+
+    /* ==========================================================
+       STATE & LOCAL STORAGE MANAGEMENT
+       ========================================================== */
+    const STORAGE_KEY_CARDS = 'order_cards_v2';
+    const STORAGE_KEY_SETTINGS = 'order_settings_v2';
+
+    // Default application settings
+    const defaultSettings = {
+      theme: 'light', // 'light' or 'dark'
+      reminderVolume: 70,
+      soundPreset: 'chime',
+      notificationChannel: 'web', // 'web' or 'system'
+      enableMascot: true,
+      defaultReminderMinutes: 60,
+      viewMode: 'split', // 'split' (2 columns) or 'timeline'
+      activeFilter: 'all', // 'all', 'high', 'low'
+      sortMode: 'newest'
+    };
+
+    let appSettings = { ...defaultSettings };
+    let cards = [];
+    let isEditingCardId = null;
+    let authMode = 'login'; // 'login' or 'signup'
+    let reminderCheckInterval = null;
+    let mascotTimeout = null;
+
+    // Load initial settings
+    try {
+      const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      if (savedSettings) {
+        appSettings = { ...defaultSettings, ...JSON.parse(savedSettings) };
+      }
+    } catch (e) {
+      console.warn("Could not load settings:", e);
+    }
+
+    // Load cards from localStorage
+    function loadLocalCards() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_CARDS);
+        if (raw) {
+          cards = JSON.parse(raw);
+        } else {
+          // Provide clean sample cards to get the user started
+          cards = [
+            {
+              id: 'order-' + Date.now() + '-1',
+              orderNumber: '84920',
+              action: 'Ring kund om offert-godkännande och leveranstid',
+              notes: 'Kund efterfrågade snabbare frakt. Kontaktperson: Mikael 070-1234567.',
+              priority: 'high',
+              previousPriority: 'high',
+              status: 'active', // 'active' or 'completed'
+              createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+              completedAt: null,
+              reminderMinutes: 60,
+              reminderTriggered: false,
+              reminderDueAt: new Date(Date.now() + 25 * 60 * 1000).toISOString()
+            },
+            {
+              id: 'order-' + Date.now() + '-2',
+              orderNumber: '84915',
+              action: 'Felsök inkommande retur och kontrollera garantisedel',
+              notes: 'Kartong märkt "Defekt fläktmotor". Läggs på hylla B-3.',
+              priority: 'low',
+              previousPriority: 'low',
+              status: 'active',
+              createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+              completedAt: null,
+              reminderMinutes: 0,
+              reminderTriggered: false,
+              reminderDueAt: null
+            }
+          ];
+          saveCardsLocally();
+        }
+      } catch (e) {
+        console.error("Error loading cards:", e);
+        cards = [];
+      }
+    }
+
+    function saveCardsLocally() {
+      try {
+        localStorage.setItem(STORAGE_KEY_CARDS, JSON.stringify(cards));
+      } catch (e) {
+        console.error("Failed to save to localStorage:", e);
+      }
+      // If user is authenticated in Firebase, trigger cloud backup in background
+      if (window.fbService && window.fbService.getCurrentUser()) {
+        window.fbService.syncCardsToCloud(cards).then(ok => {
+          if (ok) updateSyncBadgeStatus(true, window.fbService.getCurrentUser().email);
+        });
+      }
+    }
+
+    function saveSettingsLocally() {
+      try {
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(appSettings));
+      } catch (e) {
+        console.error("Failed to save settings:", e);
+      }
+    }
+
+    /* ==========================================================
+       DATE & TIME FORMATTING HELPERS (Swedish)
+       ========================================================== */
+    function formatDateTime(isoString) {
+      if (!isoString) return '';
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} kl ${hours}:${minutes}`;
+    }
+
+    function timeAgo(isoString) {
+      if (!isoString) return '';
+      const d = new Date(isoString);
+      const diffMs = Date.now() - d.getTime();
+      const diffMins = Math.floor(diffMs / (60 * 1000));
+      if (diffMins < 1) return 'Alldeles nyss';
+      if (diffMins < 60) return `${diffMins} min sedan`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours} h sedan`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays} d sedan`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /* ==========================================================
+       THEME MANAGEMENT (LIGHT / DARK)
+       ========================================================== */
+    function applyTheme(theme) {
+      const htmlEl = document.documentElement;
+      const sunIcon = document.getElementById('sunIcon');
+      const moonIcon = document.getElementById('moonIcon');
+
+      if (theme === 'dark') {
+        htmlEl.classList.add('dark');
+        sunIcon.classList.remove('hidden');
+        moonIcon.classList.add('hidden');
+      } else {
+        htmlEl.classList.remove('dark');
+        sunIcon.classList.add('hidden');
+        moonIcon.classList.remove('hidden');
+      }
+      appSettings.theme = theme;
+      saveSettingsLocally();
+    }
+
+    /* ==========================================================
+       SIDE-CANNON CONFETTI CELEBRATION
+       ========================================================== */
+    function fireCelebrationConfetti() {
+      if (typeof confetti === 'function') {
+        // Left cannon blast
+        confetti({
+          particleCount: 60,
+          angle: 60,
+          spread: 65,
+          origin: { x: 0, y: 0.75 },
+          colors: ['#22c55e', '#3b82f6', '#fbbf24', '#f43f5e', '#a855f7'],
+          zIndex: 9999
+        });
+        // Right cannon blast
+        confetti({
+          particleCount: 60,
+          angle: 120,
+          spread: 65,
+          origin: { x: 1, y: 0.75 },
+          colors: ['#22c55e', '#3b82f6', '#fbbf24', '#f43f5e', '#a855f7'],
+          zIndex: 9999
+        });
+
+        // Secondary cascade 160ms later for dramatic joyful effect
+        setTimeout(() => {
+          confetti({
+            particleCount: 45,
+            angle: 75,
+            spread: 60,
+            origin: { x: 0.05, y: 0.7 },
+            zIndex: 9999
+          });
+          confetti({
+            particleCount: 45,
+            angle: 105,
+            spread: 60,
+            origin: { x: 0.95, y: 0.7 },
+            zIndex: 9999
+          });
+        }, 160);
+      } else {
+        // Fallback native canvas particle cannon in case CDN is offline
+        runFallbackConfetti();
+      }
+    }
+
+    function runFallbackConfetti() {
+      const canvas = document.createElement('canvas');
+      canvas.style.position = 'fixed';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
+      canvas.style.width = '100vw';
+      canvas.style.height = '100vh';
+      canvas.style.pointerEvents = 'none';
+      canvas.style.zIndex = '99999';
+      document.body.appendChild(canvas);
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const ctx = canvas.getContext('2d');
+      const particles = [];
+      const colors = ['#22c55e', '#3b82f6', '#fbbf24', '#f43f5e', '#a855f7'];
+
+      // Left blast particles
+      for (let i = 0; i < 40; i++) {
+        particles.push({
+          x: 0,
+          y: canvas.height * 0.75,
+          vx: Math.random() * 12 + 5,
+          vy: -(Math.random() * 14 + 6),
+          size: Math.random() * 8 + 4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: Math.random() * 360,
+          vr: Math.random() * 10 - 5,
+          gravity: 0.35,
+          alpha: 1
+        });
+      }
+      // Right blast particles
+      for (let i = 0; i < 40; i++) {
+        particles.push({
+          x: canvas.width,
+          y: canvas.height * 0.75,
+          vx: -(Math.random() * 12 + 5),
+          vy: -(Math.random() * 14 + 6),
+          size: Math.random() * 8 + 4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: Math.random() * 360,
+          vr: Math.random() * 10 - 5,
+          gravity: 0.35,
+          alpha: 1
+        });
+      }
+
+      let frame = 0;
+      function anim() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += p.gravity;
+          p.rotation += p.vr;
+          p.alpha -= 0.012;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.alpha);
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+          ctx.restore();
+        });
+        frame++;
+        if (frame < 90) {
+          requestAnimationFrame(anim);
+        } else {
+          canvas.remove();
+        }
+      }
+      requestAnimationFrame(anim);
+    }
+
+    /* ==========================================================
+       ANIMATED MASCOT (THUMBS UP FRIEND)
+       ========================================================== */
+    const mascotPhrases = [
+      "Snyggt jobbat! En mindre att tänka på!",
+      "Kanoners! Blixtsnabbt åtgärdat!",
+      "Bra fart idag! Full koll på läget!",
+      "Check på den! Grym leverans!",
+      "Starkt jobbat! Hög produktivitet idag!"
+    ];
+
+    function showMascot() {
+      if (!appSettings.enableMascot) return;
+      const mascotContainer = document.getElementById('mascotContainer');
+      const speechText = document.getElementById('mascotSpeechText');
+
+      // Random cheer phrase
+      const randomPhrase = mascotPhrases[Math.floor(Math.random() * mascotPhrases.length)];
+      speechText.textContent = randomPhrase;
+
+      mascotContainer.classList.remove('hidden');
+
+      if (mascotTimeout) clearTimeout(mascotTimeout);
+      mascotTimeout = setTimeout(() => {
+        hideMascot();
+      }, 4200);
+    }
+
+    function hideMascot() {
+      const mascotContainer = document.getElementById('mascotContainer');
+      mascotContainer.classList.add('hidden');
+    }
+
+    /* ==========================================================
+       COPY ORDER NUMBER TO CLIPBOARD
+       ========================================================== */
+    window.copyOrderNumber = function(orderNum, event) {
+      if (event) event.stopPropagation();
+      if (!orderNum) return;
+
+      const triggerBtn = event ? event.currentTarget : null;
+      const originalInner = triggerBtn ? triggerBtn.innerHTML : null;
+
+      const provideFeedback = () => {
+        showCopyToast(`Ordernummer #${orderNum} kopierat!`);
+        if (triggerBtn && originalInner) {
+          triggerBtn.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">✓ Kopierat!</span>`;
+          triggerBtn.classList.add('bg-emerald-50', 'dark:bg-emerald-950/60');
+          setTimeout(() => {
+            if (triggerBtn) {
+              triggerBtn.innerHTML = originalInner;
+              triggerBtn.classList.remove('bg-emerald-50', 'dark:bg-emerald-950/60');
+            }
+          }, 1400);
+        }
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(orderNum)
+          .then(provideFeedback)
+          .catch(() => {
+            // Fallback copy
+            const temp = document.createElement('textarea');
+            temp.value = orderNum;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            provideFeedback();
+          });
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = orderNum;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        provideFeedback();
+      }
+    };
+
+    window.copyCardSummary = function(cardId, event) {
+      if (event) event.stopPropagation();
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      const text = `Order #${card.orderNumber} | Prio: ${card.priority === 'high' ? 'HÖG' : 'LÅG'}\nÅtgärd: ${card.action}\nAnteckning: ${card.notes || '-'}\nSkapad: ${formatDateTime(card.createdAt)}`;
+      navigator.clipboard.writeText(text).then(() => {
+        showCopyToast(`Sammanfattning för #${card.orderNumber} kopierad!`);
+      });
+    };
+
+    let copyToastTimeout = null;
+    function showCopyToast(msg) {
+      const toast = document.getElementById('copyToast');
+      const text = document.getElementById('copyToastText');
+      text.textContent = msg;
+
+      toast.classList.remove('opacity-0', 'translate-y-3', 'pointer-events-none');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      if (copyToastTimeout) clearTimeout(copyToastTimeout);
+      copyToastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
+      }, 2300);
+    }
+
+    /* ==========================================================
+       CARD ACTIONS: MOVE, COMPLETE, RESTORE, DELETE, EDIT
+       ========================================================== */
+
+    // Move card between categories
+    window.moveCardPriority = function(cardId, newPriority) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      card.priority = newPriority;
+      card.previousPriority = newPriority;
+
+      // If switched to high priority and no reminder set, offer 1h reminder default
+      if (newPriority === 'high' && (!card.reminderDueAt || card.reminderMinutes === 0)) {
+        card.reminderMinutes = 60;
+        card.reminderDueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        card.reminderTriggered = false;
+      }
+
+      saveCardsLocally();
+      renderApp();
+      showCopyToast(`Flyttad till ${newPriority === 'high' ? 'Hög prioritet ⚡' : 'Låg prioritet 🌱'}`);
+    };
+
+    // Mark card as completed (Avklarat)
+    window.completeCard = function(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      // Store previous priority before marking completed! Very important requirement!
+      card.previousPriority = card.priority;
+      card.status = 'completed';
+      card.completedAt = new Date().toISOString();
+
+      saveCardsLocally();
+      renderApp();
+
+      // Celebration: Sound, Confetti side-cannons & Mascot
+      soundSynth.playCelebrationSound(appSettings.reminderVolume);
+      fireCelebrationConfetti();
+      showMascot();
+
+      showCopyToast(`Order #${card.orderNumber} markerad som avklarad! Snyggt!`);
+    };
+
+    // Restore completed card to its previous category!
+    window.restoreCompletedCard = function(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      // Restore to EXACT previous category
+      card.status = 'active';
+      card.priority = card.previousPriority || 'high';
+      card.completedAt = null;
+
+      saveCardsLocally();
+      renderApp();
+      showCopyToast(`Order #${card.orderNumber} återställd till ${card.priority === 'high' ? 'Hög prioritet' : 'Låg prioritet'}`);
+    };
+
+    // Delete single card
+    window.deleteSingleCard = function(cardId) {
+      cards = cards.filter(c => c.id !== cardId);
+      saveCardsLocally();
+      renderApp();
+      showCopyToast('Orderkort raderat');
+    };
+
+    // Inline Card Editing (Directly inside the card without any popup!)
+    window.startInlineEdit = function(cardId) {
+      isEditingCardId = cardId;
+      renderApp();
+      // Auto-focus the action input of the edited card
+      setTimeout(() => {
+        const input = document.getElementById(`edit-action-${cardId}`);
+        if (input) input.focus();
+      }, 50);
+    };
+
+    window.cancelInlineEdit = function() {
+      isEditingCardId = null;
+      renderApp();
+    };
+
+    window.saveInlineEdit = function(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      const orderNoEl = document.getElementById(`edit-orderno-${cardId}`);
+      const actionEl = document.getElementById(`edit-action-${cardId}`);
+      const notesEl = document.getElementById(`edit-notes-${cardId}`);
+      const prioEl = document.querySelector(`input[name="edit-prio-${cardId}"]:checked`);
+      const reminderSelectEl = document.getElementById(`edit-reminder-${cardId}`);
+
+      if (!orderNoEl || !actionEl) return;
+
+      const newOrderNo = orderNoEl.value.trim();
+      const newAction = actionEl.value.trim();
+      const newNotes = notesEl ? notesEl.value.trim() : '';
+      const newPrio = prioEl ? prioEl.value : card.priority;
+
+      if (!newOrderNo || !newAction) {
+        alert('Vänligen fyll i både ordernummer och åtgärd.');
+        return;
+      }
+
+      card.orderNumber = newOrderNo;
+      card.action = newAction;
+      card.notes = newNotes;
+      card.priority = newPrio;
+      card.previousPriority = newPrio;
+
+      if (reminderSelectEl) {
+        const remVal = reminderSelectEl.value;
+        if (remVal === 'none') {
+          card.reminderMinutes = 0;
+          card.reminderDueAt = null;
+          card.reminderTriggered = false;
+        } else {
+          const mins = parseInt(remVal, 10);
+          card.reminderMinutes = mins;
+          card.reminderDueAt = new Date(Date.now() + mins * 60 * 1000).toISOString();
+          card.reminderTriggered = false;
+        }
+      }
+
+      isEditingCardId = null;
+      saveCardsLocally();
+      renderApp();
+      showCopyToast(`Order #${card.orderNumber} sparad!`);
+    };
+
+    // Snooze Reminder
+    window.snoozeReminder = function(cardId, extraMinutes = 15) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      card.reminderDueAt = new Date(Date.now() + extraMinutes * 60 * 1000).toISOString();
+      card.reminderTriggered = false;
+      saveCardsLocally();
+      renderApp();
+      showCopyToast(`Påminnelse för #${card.orderNumber} slumrad ${extraMinutes} min`);
+    };
+
+    /* ==========================================================
+       REMINDER TIMER CHECK & NOTIFICATION SYSTEM
+       ========================================================== */
+    function checkDueReminders() {
+      const now = new Date();
+
+      cards.forEach(card => {
+        // Remind for active cards that have a due date not yet triggered
+        if (card.status === 'active' && card.reminderDueAt && !card.reminderTriggered) {
+          const dueDate = new Date(card.reminderDueAt);
+          if (now >= dueDate) {
+            triggerReminderAlert(card);
+            card.reminderTriggered = true;
+            saveCardsLocally();
+            renderApp();
+          }
+        }
+      });
+    }
+
+    function triggerReminderAlert(card) {
+      // 1. Play chosen audio preset at chosen volume
+      soundSynth.playPreset(appSettings.soundPreset, appSettings.reminderVolume);
+
+      // 2. Trigger in-document notification banner
+      displayInDocumentReminderBanner(card);
+
+      // 3. If system notification chosen & permitted, fire desktop notification
+      if (appSettings.notificationChannel === 'system') {
+        fireSystemNotification(card);
+      }
+    }
+
+    function displayInDocumentReminderBanner(card) {
+      const container = document.getElementById('reminderToastContainer');
+      const toastId = 'banner-' + Date.now();
+
+      const el = document.createElement('div');
+      el.id = toastId;
+      el.className = "pointer-events-auto bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-pop-in border-l-8 border-l-amber-500 text-slate-800 dark:text-slate-100";
+      el.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 animate-bounce-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Påminnelse för order</span>
+                <span class="font-mono font-bold text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">#${escapeHtml(card.orderNumber)}</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white mt-1 leading-snug">${escapeHtml(card.action)}</h4>
+              ${card.notes ? `<p class="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">${escapeHtml(card.notes)}</p>` : ''}
+            </div>
+          </div>
+          <button onclick="document.getElementById('${toastId}').remove()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <button onclick="window.snoozeReminder('${card.id}', 15); document.getElementById('${toastId}').remove();" class="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
+            😴 Slumra 15m
+          </button>
+          <button onclick="window.completeCard('${card.id}'); document.getElementById('${toastId}').remove();" class="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition">
+            ✓ Markera som klar!
+          </button>
+        </div>
+      `;
+
+      container.appendChild(el);
+
+      // Auto dismiss banner after 25s if untouched
+      setTimeout(() => {
+        const item = document.getElementById(toastId);
+        if (item) item.remove();
+      }, 25000);
+    }
+
+    function fireSystemNotification(card) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        try {
+          new Notification(`Påminnelse: Order #${card.orderNumber}`, {
+            body: `${card.action}${card.notes ? '\n' + card.notes : ''}`,
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ef4444"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>'
+          });
+        } catch (e) {
+          console.warn("System notification error:", e);
+        }
+      }
+    }
+
+    /* ==========================================================
+       RENDER ACTIVE CARDS & COMPACT AVKLARADE CARDS
+       ========================================================== */
+    function renderApp() {
+      const searchKeyword = document.getElementById('searchInput').value.toLowerCase().trim();
+      const sortMode = document.getElementById('sortSelect').value;
+      const filterMode = appSettings.activeFilter;
+
+      // Filter active cards
+      let activeCards = cards.filter(c => c.status === 'active');
+      let completedCards = cards.filter(c => c.status === 'completed');
+
+      // Update counters in header and badges
+      const highActiveCount = activeCards.filter(c => c.priority === 'high').length;
+      const lowActiveCount = activeCards.filter(c => c.priority === 'low').length;
+
+      // Count completed today
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const completedTodayCount = completedCards.filter(c => c.completedAt && c.completedAt.slice(0, 10) === todayStr).length;
+
+      document.getElementById('countHighBadge').textContent = highActiveCount;
+      document.getElementById('countLowBadge').textContent = lowActiveCount;
+      document.getElementById('countDoneTodayBadge').textContent = completedTodayCount;
+      document.getElementById('highPrioCountPill').textContent = `${highActiveCount} ordrar`;
+      document.getElementById('lowPrioCountPill').textContent = `${lowActiveCount} ordrar`;
+      document.getElementById('combinedCountPill').textContent = `${activeCards.length} aktiva`;
+      document.getElementById('completedCountBadge').textContent = `${completedCards.length} st`;
+
+      // Apply Search filter
+      if (searchKeyword) {
+        activeCards = activeCards.filter(c => 
+          (c.orderNumber && c.orderNumber.toLowerCase().includes(searchKeyword)) ||
+          (c.action && c.action.toLowerCase().includes(searchKeyword)) ||
+          (c.notes && c.notes.toLowerCase().includes(searchKeyword))
+        );
+        completedCards = completedCards.filter(c => 
+          (c.orderNumber && c.orderNumber.toLowerCase().includes(searchKeyword)) ||
+          (c.action && c.action.toLowerCase().includes(searchKeyword)) ||
+          (c.notes && c.notes.toLowerCase().includes(searchKeyword))
+        );
+      }
+
+      // Apply priority filter if selected in toolbar
+      if (filterMode === 'high') {
+        activeCards = activeCards.filter(c => c.priority === 'high');
+      } else if (filterMode === 'low') {
+        activeCards = activeCards.filter(c => c.priority === 'low');
+      }
+
+      // Sort Cards
+      const sortComparator = (a, b) => {
+        if (sortMode === 'newest') {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        } else if (sortMode === 'oldest') {
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        } else if (sortMode === 'orderno') {
+          return String(a.orderNumber).localeCompare(String(b.orderNumber), undefined, { numeric: true });
+        } else if (sortMode === 'reminder') {
+          const aTime = a.reminderDueAt ? new Date(a.reminderDueAt).getTime() : Infinity;
+          const bTime = b.reminderDueAt ? new Date(b.reminderDueAt).getTime() : Infinity;
+          return aTime - bTime;
+        }
+        return 0;
+      };
+
+      activeCards.sort(sortComparator);
+      // Completed cards are sorted newest completed first
+      completedCards.sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
+
+      // Separate high and low
+      const highCards = activeCards.filter(c => c.priority === 'high');
+      const lowCards = activeCards.filter(c => c.priority === 'low');
+
+      // 1. Render Split Columns
+      const highListEl = document.getElementById('highPrioCardList');
+      const lowListEl = document.getElementById('lowPrioCardList');
+      highListEl.innerHTML = renderCardGroupHtml(highCards, 'high');
+      lowListEl.innerHTML = renderCardGroupHtml(lowCards, 'low');
+
+      // 2. Render Combined Chronological List
+      const combinedListEl = document.getElementById('combinedCardList');
+      combinedListEl.innerHTML = renderCardGroupHtml(activeCards, 'combined');
+
+      // 3. Render Completed Archive (Compact & space-saving)
+      const completedListEl = document.getElementById('completedCardsList');
+      completedListEl.innerHTML = renderCompletedArchiveHtml(completedCards);
+
+      // Handle view visibility (split vs timeline)
+      const splitView = document.getElementById('splitColumnsView');
+      const timelineView = document.getElementById('timelineView');
+      if (appSettings.viewMode === 'timeline') {
+        splitView.classList.add('hidden');
+        timelineView.classList.remove('hidden');
+      } else {
+        splitView.classList.remove('hidden');
+        timelineView.classList.add('hidden');
+      }
+    }
+
+    // Generate HTML for card list
+    function renderCardGroupHtml(cardList, columnContext) {
+      if (!cardList || cardList.length === 0) {
+        return `
+          <div class="h-32 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center p-4 text-center text-slate-400">
+            <svg class="w-8 h-8 mb-1.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            <span class="text-xs font-medium">Inga ordrar i denna vy</span>
+          </div>
+        `;
+      }
+
+      return cardList.map(card => {
+        // If this specific card is currently being edited inline
+        if (isEditingCardId === card.id) {
+          return renderInlineEditCardHtml(card);
+        }
+        return renderNormalCardHtml(card);
+      }).join('');
+    }
+
+    // Render Normal Active Card
+    function renderNormalCardHtml(card) {
+      const isHigh = card.priority === 'high';
+      const createdFormatted = formatDateTime(card.createdAt);
+      const relativeTime = timeAgo(card.createdAt);
+
+      // Color scheme styles
+      const cardBorder = isHigh 
+        ? 'border-l-4 border-l-rose-500 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md'
+        : 'border-l-4 border-l-sky-500 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md';
+
+      const badgePrio = isHigh
+        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300">⚡ HÖG PRIO</span>'
+        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300">🌱 LÅG PRIO</span>';
+
+      // Reminder info badge
+      let reminderBadge = '';
+      if (card.reminderDueAt) {
+        const due = new Date(card.reminderDueAt);
+        const isPastDue = new Date() >= due;
+        const dueHours = String(due.getHours()).padStart(2, '0');
+        const dueMins = String(due.getMinutes()).padStart(2, '0');
+        
+        if (isPastDue) {
+          reminderBadge = `
+            <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 animate-pulse">
+              🔔 Förfallen kl ${dueHours}:${dueMins}
+            </span>
+          `;
+        } else {
+          reminderBadge = `
+            <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              ⏰ Påminnelse kl ${dueHours}:${dueMins}
+            </span>
+          `;
+        }
+      }
+
+      return `
+        <article class="rounded-2xl border p-4 transition-all duration-200 ${cardBorder} flex flex-col gap-3 group">
+          
+          <!-- Card Header: Order Number (Click to copy), Priority Badge, Reminder & Actions -->
+          <div class="flex items-start justify-between gap-2">
+            
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- Order Number with Click-to-Copy tooltip -->
+              <button onclick="window.copyOrderNumber('${escapeHtml(card.orderNumber)}', event)" title="Klicka för att kopiera ordernummer" class="font-mono text-sm sm:text-base font-extrabold text-slate-900 dark:text-white px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-blue-950 dark:hover:text-blue-300 flex items-center gap-1 transition group/copy">
+                <span>#${escapeHtml(card.orderNumber)}</span>
+                <svg class="w-3.5 h-3.5 opacity-40 group-hover/copy:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+                </svg>
+              </button>
+
+              ${badgePrio}
+              ${reminderBadge}
+            </div>
+
+            <!-- Card Control Menu (Edit, Copy summary, Trash) -->
+            <div class="flex items-center gap-1">
+              <button onclick="window.copyCardSummary('${card.id}', event)" title="Kopiera ordersammanfattning" class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                </svg>
+              </button>
+              <button onclick="window.startInlineEdit('${card.id}')" title="Redigera i kortet" class="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+              </button>
+              <button onclick="window.deleteSingleCard('${card.id}')" title="Ta bort kort" class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Card Body: Åtgärd & Anteckning -->
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-snug break-words">
+              ${escapeHtml(card.action)}
+            </h3>
+            ${card.notes ? `
+              <p class="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 whitespace-pre-line break-words">
+                ${escapeHtml(card.notes)}
+              </p>
+            ` : ''}
+          </div>
+
+          <!-- Card Timestamp Info -->
+          <div class="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
+            <span title="${createdFormatted}">📅 Skapad: ${createdFormatted}</span>
+            <span class="font-medium text-slate-500 dark:text-slate-400">${relativeTime}</span>
+          </div>
+
+          <!-- Card Footer Actions: Quick Move & Complete Button -->
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            
+            <!-- Move between High / Low button -->
+            ${isHigh ? `
+              <button onclick="window.moveCardPriority('${card.id}', 'low')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 border border-slate-200 dark:border-slate-700 transition">
+                <span>🌱 Flytta till Låg prio</span>
+              </button>
+            ` : `
+              <button onclick="window.moveCardPriority('${card.id}', 'high')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-700 transition">
+                <span>⚡ Flytta till Hög prio</span>
+              </button>
+            `}
+
+            <!-- Complete Card Button -->
+            <button onclick="window.completeCard('${card.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-600/20 active:scale-95 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+              </svg>
+              <span>Markera som klar</span>
+            </button>
+
+          </div>
+
+        </article>
+      `;
+    }
+
+    // Render Inline Edit Mode (Inside the card without any popup!)
+    function renderInlineEditCardHtml(card) {
+      return `
+        <article class="rounded-2xl border-2 border-blue-500 bg-white dark:bg-slate-900 p-4 shadow-xl flex flex-col gap-3 animate-pop-in">
+          
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <span class="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+              </svg>
+              Redigera order direkt i kortet
+            </span>
+            <button onclick="window.cancelInlineEdit()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div class="sm:col-span-4">
+              <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Ordernr</label>
+              <input type="text" id="edit-orderno-${card.id}" value="${escapeHtml(card.orderNumber)}" class="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div class="sm:col-span-8">
+              <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Prioritetsgrad</label>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <label class="flex items-center gap-1.5 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer">
+                  <input type="radio" name="edit-prio-${card.id}" value="high" ${card.priority === 'high' ? 'checked' : ''} class="accent-rose-600">
+                  <span class="text-rose-600 dark:text-rose-400 font-bold text-xs">⚡ Hög</span>
+                </label>
+                <label class="flex items-center gap-1.5 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer">
+                  <input type="radio" name="edit-prio-${card.id}" value="low" ${card.priority === 'low' ? 'checked' : ''} class="accent-sky-600">
+                  <span class="text-sky-600 dark:text-sky-400 font-bold text-xs">🌱 Låg</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Åtgärd</label>
+            <input type="text" id="edit-action-${card.id}" value="${escapeHtml(card.action)}" class="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Anteckning</label>
+            <textarea id="edit-notes-${card.id}" rows="2" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(card.notes || '')}</textarea>
+          </div>
+
+          <div class="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
+            <span class="text-[11px] text-slate-600 dark:text-slate-300 font-medium">Ställ om påminnelse:</span>
+            <select id="edit-reminder-${card.id}" class="text-xs py-1 px-2 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
+              <option value="none">Ingen påminnelse</option>
+              <option value="15">15 minuter</option>
+              <option value="30">30 minuter</option>
+              <option value="60" ${card.reminderMinutes === 60 ? 'selected' : ''}>1 timme</option>
+              <option value="120" ${card.reminderMinutes === 120 ? 'selected' : ''}>2 timmar</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button onclick="window.cancelInlineEdit()" class="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+              Avbryt
+            </button>
+            <button onclick="window.saveInlineEdit('${card.id}')" class="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm">
+              Spara ändringar
+            </button>
+          </div>
+
+        </article>
+      `;
+    }
+
+    // Render Compact Completed Archive (Space-saving)
+    function renderCompletedArchiveHtml(completedList) {
+      if (!completedList || completedList.length === 0) {
+        return `
+          <div class="py-8 text-center text-xs text-slate-400">
+            Inga avklarade ordrar än. När du markerar en order som klar sparas den här utan att ta upp onödig plats!
+          </div>
+        `;
+      }
+
+      return completedList.map(card => {
+        const completedFormatted = formatDateTime(card.completedAt || card.createdAt);
+        const originalPrioBadge = card.previousPriority === 'high' 
+          ? '<span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">Ursprung: Hög prio</span>'
+          : '<span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">Ursprung: Låg prio</span>';
+
+        return `
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition text-xs">
+            
+            <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+              <!-- Order number click-to-copy -->
+              <button onclick="window.copyOrderNumber('${escapeHtml(card.orderNumber)}', event)" title="Klicka för att kopiera ordernummer" class="font-mono font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 line-through opacity-75">
+                #${escapeHtml(card.orderNumber)}
+              </button>
+
+              <span class="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-sm sm:max-w-md" title="${escapeHtml(card.action)}">
+                ${escapeHtml(card.action)}
+              </span>
+
+              ${originalPrioBadge}
+            </div>
+
+            <div class="flex items-center justify-between sm:justify-end gap-3 text-[11px] text-slate-400 shrink-0">
+              <span title="Tidpunkt då ordern blev klar">
+                ✓ Klar: ${completedFormatted}
+              </span>
+
+              <!-- Restore to previous category! -->
+              <div class="flex items-center gap-1.5">
+                <button onclick="window.restoreCompletedCard('${card.id}')" title="Återgå till föregående kategori (${card.previousPriority === 'high' ? 'Hög prio' : 'Låg prio'})" class="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-blue-900/60 dark:hover:text-blue-300 font-semibold transition flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                  </svg>
+                  <span>Återgå till ${card.previousPriority === 'high' ? 'Hög' : 'Låg'}</span>
+                </button>
+
+                <button onclick="window.deleteSingleCard('${card.id}')" title="Radera permanent" class="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    /* ==========================================================
+       ADD NEW CARD FORM TOGGLE & LOGIC (NO POPUP!)
+       ========================================================== */
+    function toggleNewCardSection(show) {
+      const section = document.getElementById('newCardSection');
+      const icon = document.getElementById('toggleNewCardIcon');
+      const isCurrentlyHidden = section.classList.contains('hidden');
+      const willShow = (show !== undefined) ? show : isCurrentlyHidden;
+
+      if (willShow) {
+        section.classList.remove('hidden');
+        icon.classList.add('rotate-45');
+        // Auto-focus the order number input
+        setTimeout(() => {
+          const input = document.getElementById('newOrderNumber');
+          if (input) input.focus();
+        }, 60);
+      } else {
+        section.classList.add('hidden');
+        icon.classList.remove('rotate-45');
+      }
+    }
+
+    function handleCreateNewCard(e) {
+      if (e) e.preventDefault();
+
+      const orderNumber = document.getElementById('newOrderNumber').value.trim();
+      const action = document.getElementById('newAction').value.trim();
+      const notes = document.getElementById('newNotes').value.trim();
+      const priorityRadio = document.querySelector('input[name="newPriority"]:checked');
+      const priority = priorityRadio ? priorityRadio.value : 'high';
+      const reminderSelect = document.getElementById('newReminderTime').value;
+
+      if (!orderNumber || !action) {
+        alert('Vänligen fyll i både ordernummer och åtgärd.');
+        return;
+      }
+
+      const now = new Date();
+      let reminderDueAt = null;
+      let reminderMinutes = 0;
+
+      if (reminderSelect !== 'none') {
+        reminderMinutes = parseInt(reminderSelect, 10);
+        reminderDueAt = new Date(now.getTime() + reminderMinutes * 60 * 1000).toISOString();
+      }
+
+      const newCard = {
+        id: 'order-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        orderNumber: orderNumber,
+        action: action,
+        notes: notes,
+        priority: priority,
+        previousPriority: priority,
+        status: 'active',
+        createdAt: now.toISOString(),
+        completedAt: null,
+        reminderMinutes: reminderMinutes,
+        reminderTriggered: false,
+        reminderDueAt: reminderDueAt
+      };
+
+      // Put newest at the top
+      cards.unshift(newCard);
+      saveCardsLocally();
+
+      // Reset form fields
+      document.getElementById('newCardForm').reset();
+      // Keep default radio & reminder
+      document.querySelector('input[name="newPriority"][value="high"]').checked = true;
+      document.getElementById('newReminderTime').value = '60';
+
+      // Minimize the new order box after saving
+      toggleNewCardSection(false);
+
+      renderApp();
+      showCopyToast(`Ny order #${orderNumber} tillagd!`);
+    }
+
+    /* ==========================================================
+       EXPORT & IMPORT BACKUP SYSTEM
+       ========================================================== */
+    function exportCardsToJson() {
+      const dataStr = JSON.stringify(cards, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const today = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ordrar-backup-${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showCopyToast('Backup-fil sparad och nedladdad!');
+    }
+
+    function importCardsFromJson(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed)) {
+            // Validate required fields
+            const validCards = parsed.filter(item => item && item.orderNumber && item.action);
+            if (validCards.length > 0) {
+              cards = validCards;
+              saveCardsLocally();
+              renderApp();
+              showCopyToast(`Lyckades! ${validCards.length} ordrar importerade från fil.`);
+              document.getElementById('settingsModal').classList.add('hidden');
+            } else {
+              alert('Filen innehöll inga giltiga orderkort.');
+            }
+          } else {
+            alert('Ogiltigt filformat. Förväntade en JSON-lista med kort.');
+          }
+        } catch (err) {
+          alert('Kunde inte läsa filen: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    /* ==========================================================
+       DOUBLE CONFIRMATION MODAL TO DELETE ALL CARDS
+       ========================================================== */
+    function openDoubleConfirmModal() {
+      const modal = document.getElementById('doubleConfirmModal');
+      const countWarning = document.getElementById('deleteCardCountWarning');
+      const input = document.getElementById('deleteConfirmationInput');
+      const execBtn = document.getElementById('executeDeleteAllCardsBtn');
+
+      countWarning.textContent = `${cards.length} st aktiva och sparade ordrar`;
+      input.value = '';
+      execBtn.disabled = true;
+      execBtn.classList.add('opacity-40', 'cursor-not-allowed');
+
+      modal.classList.remove('hidden');
+      setTimeout(() => input.focus(), 80);
+    }
+
+    function closeDoubleConfirmModal() {
+      document.getElementById('doubleConfirmModal').classList.add('hidden');
+    }
+
+    /* ==========================================================
+       FIREBASE AUTH & SYNC STATUS UI
+       ========================================================== */
+    function updateSyncBadgeStatus(isOnline, email) {
+      const badge = document.getElementById('syncStatusBadge');
+      const text = document.getElementById('syncStatusText');
+      const authBtnText = document.getElementById('authBtnText');
+
+      if (isOnline && email) {
+        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800";
+        text.textContent = `Molnsynkad (${email.split('@')[0]})`;
+        authBtnText.textContent = email.split('@')[0];
+      } else {
+        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700";
+        text.textContent = "Lokalt sparad";
+        authBtnText.textContent = "Logga in";
+      }
+    }
+
+    window.onAuthChangeHandler = async function(user) {
+      const loggedInSection = document.getElementById('loggedInStateSection');
+      const authForm = document.getElementById('authForm');
+      const currentEmailEl = document.getElementById('currentAccountEmail');
+
+      if (user) {
+        updateSyncBadgeStatus(true, user.email);
+        loggedInSection.classList.remove('hidden');
+        authForm.classList.add('hidden');
+        currentEmailEl.textContent = user.email;
+
+        // Try to pull remote cards if any exist
+        try {
+          const remoteCards = await window.fbService.fetchCardsFromCloud();
+          if (remoteCards && Array.isArray(remoteCards) && remoteCards.length > 0) {
+            // Merge or set if local was empty
+            if (cards.length === 0) {
+              cards = remoteCards;
+              saveCardsLocally();
+              renderApp();
+            }
+          }
+        } catch (e) {
+          console.warn("Cloud pull error:", e);
+        }
+      } else {
+        updateSyncBadgeStatus(false, null);
+        loggedInSection.classList.add('hidden');
+        authForm.classList.remove('hidden');
+      }
+    };
+
+    /* ==========================================================
+       EVENT LISTENERS & APP INITIALIZATION
+       ========================================================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Initialize local data & theme
+      applyTheme(appSettings.theme);
+      loadLocalCards();
+
+      // Set input values in settings modal
+      document.getElementById('reminderVolumeSlider').value = appSettings.reminderVolume;
+      document.getElementById('volumeValueLabel').textContent = `${appSettings.reminderVolume}%`;
+      document.getElementById('soundPresetSelect').value = appSettings.soundPreset;
+      document.getElementById('enableMascotCheckbox').checked = appSettings.enableMascot;
+      document.querySelector(`input[name="notificationChannel"][value="${appSettings.notificationChannel}"]`).checked = true;
+
+      // 2. Setup New Card Toggle & Form submission
+      const toggleNewCardBtn = document.getElementById('toggleNewCardBtn');
+      const closeNewCardBtn = document.getElementById('closeNewCardBtn');
+      const cancelNewCardBtn = document.getElementById('cancelNewCardBtn');
+      const newCardForm = document.getElementById('newCardForm');
+
+      toggleNewCardBtn.addEventListener('click', () => toggleNewCardSection());
+      closeNewCardBtn.addEventListener('click', () => toggleNewCardSection(false));
+      cancelNewCardBtn.addEventListener('click', () => toggleNewCardSection(false));
+      newCardForm.addEventListener('submit', handleCreateNewCard);
+
+      // Priority radio toggle listener: default to 1h reminder if high priority is picked
+      document.querySelectorAll('input[name="newPriority"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          const reminderSelect = document.getElementById('newReminderTime');
+          if (e.target.value === 'high' && reminderSelect.value === 'none') {
+            reminderSelect.value = '60';
+          }
+        });
+      });
+
+      // Keyboard Shortcut 'N' to open new order box (as requested!)
+      window.addEventListener('keydown', (e) => {
+        const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+        const isEditingField = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+        // Press 'N' when not typing in an input
+        if ((e.key === 'n' || e.key === 'N') && !isEditingField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          toggleNewCardSection(true);
+        }
+
+        // Press 'Escape' to close active modals or new card section
+        if (e.key === 'Escape') {
+          toggleNewCardSection(false);
+          document.getElementById('settingsModal').classList.add('hidden');
+          document.getElementById('authModal').classList.add('hidden');
+          document.getElementById('doubleConfirmModal').classList.add('hidden');
+          if (isEditingCardId) {
+            cancelInlineEdit();
+          }
+        }
+
+        // Ctrl+Enter or Cmd+Enter to submit new card or inline edit
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          if (!document.getElementById('newCardSection').classList.contains('hidden')) {
+            handleCreateNewCard();
+          } else if (isEditingCardId) {
+            saveInlineEdit(isEditingCardId);
+          }
+        }
+      });
+
+      // Quick-tag buttons inside new card form
+      document.querySelectorAll('.quick-tag').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const actionInput = document.getElementById('newAction');
+          const tag = btn.textContent.trim();
+          actionInput.value = actionInput.value ? `${actionInput.value} (${tag})` : tag;
+          actionInput.focus();
+        });
+      });
+
+      // 3. Search and Filtering
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+      searchInput.addEventListener('input', () => {
+        if (searchInput.value) {
+          clearSearchBtn.classList.remove('hidden');
+        } else {
+          clearSearchBtn.classList.add('hidden');
+        }
+        renderApp();
+      });
+
+      clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearSearchBtn.classList.add('hidden');
+        renderApp();
+        searchInput.focus();
+      });
+
+      // Filter segmented buttons (Alla, Hög, Låg)
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.filter-btn').forEach(b => {
+            b.className = "filter-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition";
+          });
+          btn.className = "filter-btn px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs transition";
+          appSettings.activeFilter = btn.getAttribute('data-filter');
+          saveSettingsLocally();
+          renderApp();
+        });
+      });
+
+      // View Mode buttons (2 Kolumner vs Samlad tidslista)
+      const viewSplitBtn = document.getElementById('viewSplitBtn');
+      const viewTimelineBtn = document.getElementById('viewTimelineBtn');
+
+      function updateViewModeUi(mode) {
+        if (mode === 'timeline') {
+          viewTimelineBtn.className = "view-btn px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs flex items-center gap-1 transition";
+          viewSplitBtn.className = "view-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition";
+        } else {
+          viewSplitBtn.className = "view-btn px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs flex items-center gap-1 transition";
+          viewTimelineBtn.className = "view-btn px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition";
+        }
+        appSettings.viewMode = mode;
+        saveSettingsLocally();
+        renderApp();
+      }
+
+      viewSplitBtn.addEventListener('click', () => updateViewModeUi('split'));
+      viewTimelineBtn.addEventListener('click', () => updateViewModeUi('timeline'));
+
+      // Sort Select
+      const sortSelect = document.getElementById('sortSelect');
+      sortSelect.value = appSettings.sortMode || 'newest';
+      sortSelect.addEventListener('change', () => {
+        appSettings.sortMode = sortSelect.value;
+        saveSettingsLocally();
+        renderApp();
+      });
+
+      // 4. Completed Archive Section Collapsible
+      const toggleArchiveBtn = document.getElementById('toggleCompletedArchiveBtn');
+      const archiveContent = document.getElementById('completedArchiveContent');
+      const chevronIcon = document.getElementById('completedChevronIcon');
+
+      toggleArchiveBtn.addEventListener('click', () => {
+        const isHidden = archiveContent.classList.contains('hidden');
+        if (isHidden) {
+          archiveContent.classList.remove('hidden');
+          chevronIcon.classList.add('rotate-180');
+        } else {
+          archiveContent.classList.add('hidden');
+          chevronIcon.classList.remove('rotate-180');
+        }
+      });
+
+      // Clear only completed cards button
+      document.getElementById('clearCompletedOnlyBtn').addEventListener('click', () => {
+        if (confirm('Vill du rensa alla avklarade ordrar? De aktiva berörs inte.')) {
+          cards = cards.filter(c => c.status !== 'completed');
+          saveCardsLocally();
+          renderApp();
+          showCopyToast('Avklarade ordrar rensade!');
+        }
+      });
+
+      // 5. Theme Toggle Button
+      document.getElementById('themeToggleBtn').addEventListener('click', () => {
+        const nextTheme = appSettings.theme === 'dark' ? 'light' : 'dark';
+        applyTheme(nextTheme);
+      });
+
+      // 6. Settings Modal Controls
+      const settingsModal = document.getElementById('settingsModal');
+      document.getElementById('openSettingsBtn').addEventListener('click', () => {
+        settingsModal.classList.remove('hidden');
+      });
+      document.getElementById('closeSettingsModalBtn').addEventListener('click', () => {
+        settingsModal.classList.add('hidden');
+      });
+      document.getElementById('saveCloseSettingsBtn').addEventListener('click', () => {
+        settingsModal.classList.add('hidden');
+      });
+
+      // Settings: Sound preset preview
+      document.getElementById('previewSoundBtn').addEventListener('click', () => {
+        const preset = document.getElementById('soundPresetSelect').value;
+        const vol = parseInt(document.getElementById('reminderVolumeSlider').value, 10);
+        soundSynth.playPreset(preset, vol);
+      });
+
+      // Settings: Volume slider
+      const volumeSlider = document.getElementById('reminderVolumeSlider');
+      const volumeLabel = document.getElementById('volumeValueLabel');
+      volumeSlider.addEventListener('input', () => {
+        volumeLabel.textContent = `${volumeSlider.value}%`;
+        appSettings.reminderVolume = parseInt(volumeSlider.value, 10);
+        saveSettingsLocally();
+      });
+
+      // Settings: Sound Preset change
+      document.getElementById('soundPresetSelect').addEventListener('change', (e) => {
+        appSettings.soundPreset = e.target.value;
+        saveSettingsLocally();
+      });
+
+      // Settings: Notification channel
+      document.querySelectorAll('input[name="notificationChannel"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          appSettings.notificationChannel = e.target.value;
+          saveSettingsLocally();
+          const permNotice = document.getElementById('systemNotifStatusNotice');
+          if (appSettings.notificationChannel === 'system') {
+            permNotice.classList.remove('hidden');
+            if ("Notification" in window) {
+              document.getElementById('systemNotifPermLabel').textContent = Notification.permission;
+            }
+          } else {
+            permNotice.classList.add('hidden');
+          }
+        });
+      });
+
+      // Request system notification permission
+      document.getElementById('requestNotifPermBtn').addEventListener('click', async () => {
+        if ("Notification" in window) {
+          const perm = await Notification.requestPermission();
+          document.getElementById('systemNotifPermLabel').textContent = perm;
+          if (perm === 'granted') {
+            showCopyToast('Skrivbordsnotiser beviljade!');
+          }
+        }
+      });
+
+      // Settings: Test Reminder Button (Spelar ljud + visar påminnelsebanner)
+      document.getElementById('testReminderBtn').addEventListener('click', () => {
+        const testCard = {
+          id: 'test-card',
+          orderNumber: 'TEST-999',
+          action: 'Detta är ett test av påminnelsesystemet!',
+          notes: 'Om du hör ljudet och ser denna ruta fungerar allting utmärkt.',
+          priority: 'high',
+          status: 'active'
+        };
+        triggerReminderAlert(testCard);
+      });
+
+      // Settings: Enable Mascot Checkbox
+      document.getElementById('enableMascotCheckbox').addEventListener('change', (e) => {
+        appSettings.enableMascot = e.target.checked;
+        saveSettingsLocally();
+      });
+
+      // Mascot click to close
+      document.getElementById('mascotFigure').addEventListener('click', hideMascot);
+
+      // Settings: Export JSON
+      document.getElementById('exportCardsBtn').addEventListener('click', exportCardsToJson);
+
+      // Settings: Import JSON
+      document.getElementById('importFileInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          importCardsFromJson(file);
+          e.target.value = '';
+        }
+      });
+
+      // 7. Double confirmation for deleting all cards
+      document.getElementById('deleteAllCardsBtn').addEventListener('click', openDoubleConfirmModal);
+      document.getElementById('cancelDoubleConfirmBtn').addEventListener('click', closeDoubleConfirmModal);
+
+      const deleteInput = document.getElementById('deleteConfirmationInput');
+      const executeDeleteBtn = document.getElementById('executeDeleteAllCardsBtn');
+
+      deleteInput.addEventListener('input', () => {
+        const val = deleteInput.value.trim().toUpperCase();
+        if (val === 'RADERA') {
+          executeDeleteBtn.disabled = false;
+          executeDeleteBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+        } else {
+          executeDeleteBtn.disabled = true;
+          executeDeleteBtn.classList.add('opacity-40', 'cursor-not-allowed');
+        }
+      });
+
+      executeDeleteBtn.addEventListener('click', () => {
+        cards = [];
+        saveCardsLocally();
+        renderApp();
+        closeDoubleConfirmModal();
+        settingsModal.classList.add('hidden');
+        showCopyToast('Alla ordrar har raderats permanent!');
+      });
+
+      // 8. Auth Modal & Cloud Sync
+      const authModal = document.getElementById('authModal');
+      document.getElementById('authBtn').addEventListener('click', () => {
+        authModal.classList.remove('hidden');
+      });
+      document.getElementById('closeAuthModalBtn').addEventListener('click', () => {
+        authModal.classList.add('hidden');
+      });
+
+      // Toggle Login / Signup
+      const toggleAuthBtn = document.getElementById('toggleAuthModeBtn');
+      const authSubmitText = document.getElementById('authSubmitText');
+      toggleAuthBtn.addEventListener('click', () => {
+        if (authMode === 'login') {
+          authMode = 'signup';
+          authSubmitText.textContent = 'Skapa konto och börja synka';
+          toggleAuthBtn.textContent = 'Har du redan konto? Logga in här';
+        } else {
+          authMode = 'login';
+          authSubmitText.textContent = 'Logga in och synkronisera';
+          toggleAuthBtn.textContent = 'Inget konto? Skapa ett nytt konto här';
+        }
+      });
+
+      // Submit Auth form
+      document.getElementById('authForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('authEmail').value.trim();
+        const password = document.getElementById('authPassword').value;
+        const errorEl = document.getElementById('authErrorMsg');
+        errorEl.classList.add('hidden');
+
+        try {
+          if (authMode === 'signup') {
+            await window.fbService.signup(email, password);
+            showCopyToast('Konto skapat! Molnsynkronisering påbörjad.');
+          } else {
+            await window.fbService.login(email, password);
+            showCopyToast('Inloggad! Synkroniserar dina ordrar...');
+          }
+          authModal.classList.add('hidden');
+        } catch (err) {
+          errorEl.classList.remove('hidden');
+          let msg = err.message;
+          if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+            msg = 'Felaktigt lösenord eller användarnamn.';
+          } else if (err.code === 'auth/email-already-in-use') {
+            msg = 'Det finns redan ett konto med denna e-postadress. Byt till Logga in!';
+          } else if (err.code === 'auth/weak-password') {
+            msg = 'Lösenordet måste vara minst 6 tecken långt.';
+          } else if (err.code === 'auth/invalid-email') {
+            msg = 'Ogiltig e-postadress.';
+          }
+          errorEl.textContent = msg;
+        }
+      });
+
+      // Manual Sync Now button
+      document.getElementById('manualSyncNowBtn').addEventListener('click', async () => {
+        const ok = await window.fbService.syncCardsToCloud(cards);
+        if (ok) {
+          showCopyToast('Molnsynkronisering genomförd!');
+        } else {
+          showCopyToast('Molnfel: Kontrollera din uppkoppling.');
+        }
+      });
+
+      // Logout button
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await window.fbService.logout();
+        showCopyToast('Du har loggats ut. Ordrarna sparas fortfarande lokalt!');
+      });
+
+      // Quick stats button in toolbar
+      document.getElementById('quickStatsBtn').addEventListener('click', () => {
+        const total = cards.length;
+        const active = cards.filter(c => c.status === 'active').length;
+        const high = cards.filter(c => c.status === 'active' && c.priority === 'high').length;
+        const completed = cards.filter(c => c.status === 'completed').length;
+        alert(`📊 Dagssammanfattning:\n• Aktiva ordrar: ${active} st (varav ${high} st Hög prio)\n• Avklarade ordrar: ${completed} st\n• Totalt i systemet: ${total} st`);
+      });
+
+      // 9. Initial Render & Reminder Check Timer (every 8 seconds)
+      renderApp();
+      reminderCheckInterval = setInterval(checkDueReminders, 8000);
+      checkDueReminders();
+    });
+  </script>
+
+</body>
+</html>
