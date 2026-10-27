@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OrderPrio – Håll koll på jobbet</title>
+<script>
+// Initiera tema innan render (undviker blixt)
+(function(){try{
+  var s = JSON.parse(localStorage.getItem('op.settings.v1')||'{}');
+  var t = s.theme || 'system';
+  var dark = t==='dark' || (t==='system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  if(dark) document.documentElement.classList.add('dark');
+}catch(e){}})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+@theme { --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif; }
+
+.inp { @apply w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none transition placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30; }
+.btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 active:scale-[.98] cursor-pointer; }
+.btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 transition hover:bg-neutral-100 dark:hover:bg-neutral-800 active:scale-[.98] cursor-pointer; }
+.icon-btn { @apply inline-flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 dark:text-neutral-400 transition hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-800 dark:hover:text-neutral-100 cursor-pointer select-none; }
+.card-action { @apply inline-flex h-7 min-w-7 px-1.5 items-center justify-center gap-1 rounded-md text-xs font-medium text-neutral-500 dark:text-neutral-400 transition hover:bg-neutral-100 dark:hover:bg-neutral-700/60 hover:text-neutral-800 dark:hover:text-neutral-100 cursor-pointer select-none; }
+.chip { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition cursor-pointer select-none; }
+.seg-btn { @apply rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer select-none; }
+.danger-btn { @apply w-full rounded-lg border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-400 transition hover:bg-red-100 dark:hover:bg-red-500/20 cursor-pointer; }
+.danger-btn.armed { @apply bg-red-600 text-white border-red-600 hover:bg-red-500 animate-pulse; }
+.label { @apply block text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1; }
+.settings-row { @apply rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4; }
+</style>
+<style>
+  html { scrollbar-color: #a3a3a3 transparent; }
+  body { font-family: "Inter", ui-sans-serif, system-ui, sans-serif; }
+  ::selection { background: rgba(99,102,241,.25); }
+
+  /* Påmint kort-puls */
+  @keyframes remindPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.45);} 50% { box-shadow: 0 0 0 6px rgba(244,63,94,0);} }
+  .remind-flash { animation: remindPulse 1.4s ease-in-out infinite; border-color: rgba(244,63,94,.6) !important; }
+
+  /* Maskot */
+  #mascot { transform: translateY(135%); opacity: 0; transition: transform .5s cubic-bezier(.34,1.4,.64,1), opacity .4s; }
+  #mascot.show { transform: translateY(0); opacity: 1; }
+  #mascotBubble { transform: scale(0); transition: transform .3s cubic-bezier(.34,1.56,.64,1) .15s; }
+  #mascot.show #mascotBubble { transform: scale(1); }
+  #mascotArm { transition: transform .4s cubic-bezier(.34,1.56,.64,1) .1s; }
+  #mascot.show #mascotArm { transform: rotate(-155deg); }
+  #mascot.show svg { animation: hop .55s ease .1s 2; }
+  @keyframes hop { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-16px)} 70%{transform:translateY(-4px)} }
+
+  /* Nivå-banner */
+  #levelBanner { opacity: 0; pointer-events: none; }
+  #levelBanner.show { animation: bannerIn 2.8s cubic-bezier(.22,1,.36,1) forwards; }
+  @keyframes bannerIn {
+    0% { opacity:0; transform: translate(-50%,-30px) scale(.8); }
+    12% { opacity:1; transform: translate(-50%,0) scale(1.05); }
+    18% { transform: translate(-50%,0) scale(1); }
+    80% { opacity:1; transform: translate(-50%,0) scale(1); }
+    100% { opacity:0; transform: translate(-50%,-20px) scale(.95); }
+  }
+
+  /* Toast */
+  .toast { animation: toastIn .25s cubic-bezier(.22,1,.36,1); }
+  @keyframes toastIn { from { opacity:0; transform: translateY(12px) scale(.96);} to {opacity:1; transform:none;} }
+  .toast.out { opacity:0; transform: translateY(8px); transition: all .25s; }
+
+  /* Modal/drawer */
+  .modal-card { animation: modalIn .22s cubic-bezier(.22,1,.36,1); }
+  @keyframes modalIn { from { opacity:0; transform: translateY(14px) scale(.97);} to {opacity:1; transform:none;} }
+  #settingsDrawer { transition: transform .3s cubic-bezier(.22,1,.36,1); }
+
+  /* Kopierings-chip blink */
+  @keyframes copiedFlash { 0% { transform: scale(1);} 40% { transform: scale(1.12);} 100% { transform: scale(1);} }
+  .copied-flash { animation: copiedFlash .35s ease; }
+
+  kbd { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body class="min-h-screen bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased">
+
+<!-- ================= HEADER ================= -->
+<header class="sticky top-0 z-40 border-b border-neutral-200 dark:border-neutral-800 bg-white/85 dark:bg-neutral-950/85 backdrop-blur">
+  <div class="mx-auto max-w-6xl px-4">
+    <div class="flex items-center gap-3 py-3">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+          <i data-lucide="list-checks" class="h-5 w-5"></i>
+        </div>
+        <div class="leading-tight hidden sm:block">
+          <div class="font-extrabold tracking-tight">OrderPrio</div>
+          <div class="text-[10px] text-neutral-400 dark:text-neutral-500 font-medium -mt-0.5">håll koll på jobbet</div>
+        </div>
+      </div>
+
+      <!-- Nivå-chip -->
+      <button id="levelChip" onclick="App.openSettings('stats')" class="chip border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 shrink-0" title="Visa statistik">
+        <i data-lucide="trophy" class="h-3.5 w-3.5"></i>
+        <span id="levelText">Nivå 1</span>
+        <span id="levelDots" class="flex gap-0.5 ml-0.5"></span>
+      </button>
+
+      <!-- Sök -->
+      <div class="relative flex-1 max-w-md">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none"></i>
+        <input id="searchInput" class="inp pl-9 pr-9 !py-1.5" placeholder="Sök ordernummer, åtgärd, anteckning…  ( / )" autocomplete="off">
+        <button id="clearSearch" class="absolute right-2 top-1/2 -translate-y-1/2 icon-btn !h-6 !w-6 hidden" onclick="App.clearQuery()"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
+      </div>
+
+      <div class="ml-auto flex items-center gap-1">
+        <button class="icon-btn" title="Växla tema (T)" onclick="App.toggleTheme()"><span id="themeIcon"></span></button>
+        <button class="icon-btn" title="Snabbkommandon (?)" onclick="App.toggleHelp(true)"><i data-lucide="keyboard" class="h-5 w-5"></i></button>
+        <button class="icon-btn" title="Inställningar" onclick="App.openSettings()"><i data-lucide="settings" class="h-5 w-5"></i></button>
+        <button id="authBtn" class="btn-ghost !py-1.5 ml-1" onclick="App.toggleAuth(true)"><i data-lucide="log-in" class="h-4 w-4"></i><span class="hidden sm:inline">Logga in</span></button>
+      </div>
+    </div>
+
+    <!-- Verktygsrad -->
+    <div class="flex flex-wrap items-center gap-2 pb-3">
+      <div id="filterChips" class="flex gap-1.5"></div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="sortBtn" class="btn-ghost !py-1 !px-2.5 text-xs" title="Ändra sortering" onclick="App.toggleSort()"></button>
+        <div class="flex rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-0.5">
+          <button id="viewSplitBtn" class="seg-btn" title="Separata fält (V)" onclick="App.setView('split')"><span class="flex items-center gap-1"><i data-lucide="columns-2" class="h-3.5 w-3.5"></i><span class="hidden sm:inline">Fält</span></span></button>
+          <button id="viewAllBtn" class="seg-btn" title="Tidsordning (V)" onclick="App.setView('all')"><span class="flex items-center gap-1"><i data-lucide="list" class="h-3.5 w-3.5"></i><span class="hidden sm:inline">Lista</span></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= MAIN ================= -->
+<main class="mx-auto max-w-6xl px-4 py-5 pb-24">
+
+  <!-- Kompositör -->
+  <div id="composerWrap" class="mb-5"></div>
+
+  <!-- Delad vy -->
+  <div id="splitView" class="grid md:grid-cols-2 gap-4 items-start">
+    <section class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+      <header class="flex items-center gap-2 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 bg-rose-50/60 dark:bg-rose-500/5">
+        <span class="h-2.5 w-2.5 rounded-full bg-rose-500"></span>
+        <h2 class="font-bold text-sm text-rose-600 dark:text-rose-400">Hög prioritet</h2>
+        <span id="countHigh" class="ml-auto text-xs font-semibold text-rose-400 bg-rose-100 dark:bg-rose-500/15 rounded-full px-2 py-0.5"></span>
+      </header>
+      <div id="listHigh" class="p-3 space-y-3"></div>
+    </section>
+
+    <section class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+      <header class="flex items-center gap-2 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 bg-sky-50/60 dark:bg-sky-500/5">
+        <span class="h-2.5 w-2.5 rounded-full bg-sky-500"></span>
+        <h2 class="font-bold text-sm text-sky-600 dark:text-sky-400">Låg prioritet</h2>
+        <span id="countLow" class="ml-auto text-xs font-semibold text-sky-400 bg-sky-100 dark:bg-sky-500/15 rounded-full px-2 py-0.5"></span>
+      </header>
+      <div id="listLow" class="p-3 space-y-3"></div>
+    </section>
+  </div>
+
+  <!-- Tidsvy -->
+  <section id="allView" class="hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+    <header class="flex items-center gap-2 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
+      <i data-lucide="clock" class="h-4 w-4 text-neutral-400"></i>
+      <h2 class="font-bold text-sm">Alla aktiva kort</h2>
+      <span id="countAll" class="ml-auto text-xs font-semibold text-neutral-400 bg-neutral-100 dark:bg-neutral-800 rounded-full px-2 py-0.5"></span>
+    </header>
+    <div id="listAll" class="p-3 space-y-3"></div>
+  </section>
+
+  <!-- Avklarat -->
+  <section class="mt-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+    <button class="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition cursor-pointer" onclick="App.toggleDone()">
+      <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+      <h2 class="font-bold text-sm text-emerald-600 dark:text-emerald-400">Avklarat</h2>
+      <span id="countDone" class="text-xs font-semibold text-emerald-500 bg-emerald-100 dark:bg-emerald-500/15 rounded-full px-2 py-0.5"></span>
+      <span id="doneToday" class="text-xs text-neutral-400 dark:text-neutral-500 font-medium"></span>
+      <i id="doneChevron" data-lucide="chevron-down" class="ml-auto h-4 w-4 text-neutral-400"></i>
+    </button>
+    <div id="doneBody" class="hidden border-t border-neutral-100 dark:border-neutral-800">
+      <div id="listDone" class="p-3 space-y-2"></div>
+    </div>
+  </section>
+
+  <p class="mt-8 text-center text-[11px] text-neutral-400 dark:text-neutral-600">
+    Allt sparas automatiskt lokalt i webbläsaren. Tryck <kbd class="rounded border border-neutral-300 dark:border-neutral-700 px-1 py-0.5">?</kbd> för snabbkommandon.
+  </p>
+</main>
+
+<!-- ================= PÅMINNELSEMODAL ================= -->
+<div id="reminderModal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-card w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-2xl overflow-hidden">
+    <div class="flex items-center gap-3 bg-rose-600 px-5 py-4 text-white">
+      <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20"><i data-lucide="bell-ring" class="h-5 w-5"></i></span>
+      <div>
+        <h3 class="font-extrabold leading-tight">Dags att åtgärda!</h3>
+        <p id="reminderSub" class="text-xs text-rose-100"></p>
+      </div>
+    </div>
+    <div id="reminderList" class="max-h-72 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800"></div>
+    <div class="px-5 py-3 bg-neutral-50 dark:bg-neutral-800/50 flex justify-end">
+      <button class="btn-ghost" onclick="App.closeReminder()">Stäng</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= INLOGGNINGSMODAL ================= -->
+<div id="authModal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-card w-full max-w-sm rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-2xl p-6">
+    <div class="flex items-start justify-between mb-1">
+      <h3 class="font-extrabold text-lg flex items-center gap-2"><i data-lucide="cloud" class="h-5 w-5 text-indigo-500"></i> Online-synk</h3>
+      <button class="icon-btn" onclick="App.toggleAuth(false)"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div id="authBody"></div>
+  </div>
+</div>
+
+<!-- ================= HJÄLPMODAL ================= -->
+<div id="helpModal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+  <div class="modal-card w-full max-w-sm rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-2xl p-6">
+    <div class="flex items-start justify-between mb-4">
+      <h3 class="font-extrabold text-lg flex items-center gap-2"><i data-lucide="keyboard" class="h-5 w-5 text-indigo-500"></i> Snabbkommandon</h3>
+      <button class="icon-btn" onclick="App.toggleHelp(false)"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div id="helpBody" class="space-y-2 text-sm"></div>
+  </div>
+</div>
+
+<!-- ================= INSTÄLLNINGSDRAWER ================= -->
+<div id="settingsOverlay" class="fixed inset-0 z-[70] hidden bg-black/40 backdrop-blur-sm" onclick="App.closeSettings()"></div>
+<aside id="settingsDrawer" class="fixed top-0 right-0 z-[75] h-full w-[400px] max-w-full translate-x-full bg-neutral-50 dark:bg-neutral-950 border-l border-neutral-200 dark:border-neutral-800 shadow-2xl flex flex-col">
+  <header class="flex items-center gap-2 px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+    <i data-lucide="settings" class="h-5 w-5 text-indigo-500"></i>
+    <h3 class="font-extrabold">Inställningar</h3>
+    <button class="icon-btn ml-auto" onclick="App.closeSettings()"><i data-lucide="x" class="h-4 w-4"></i></button>
+  </header>
+  <div id="settingsBody" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
+</aside>
+
+<!-- ================= NIVÅBANNER ================= -->
+<div id="levelBanner" class="fixed left-1/2 top-24 z-[85] -translate-x-1/2 text-center">
+  <div class="rounded-3xl border-2 border-amber-300 dark:border-amber-400/60 bg-white/95 dark:bg-neutral-900/95 shadow-2xl px-10 py-6">
+    <div class="flex justify-center mb-1"><i data-lucide="crown" class="h-8 w-8 text-amber-500"></i></div>
+    <div class="text-[11px] font-bold uppercase tracking-[.2em] text-amber-500">Nivå upp!</div>
+    <div id="levelBannerNum" class="text-4xl font-extrabold tracking-tight">Nivå 2</div>
+    <div id="levelBannerMsg" class="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium"></div>
+  </div>
+</div>
+
+<!-- ================= MASKOT ================= -->
+<div id="mascot" class="pointer-events-none fixed bottom-3 right-4 z-[76]">
+  <div id="mascotBubble" class="absolute -top-11 right-16 whitespace-nowrap rounded-2xl rounded-br-sm bg-indigo-600 px-3.5 py-1.5 text-sm font-bold text-white shadow-xl"></div>
+  <svg width="110" height="130" viewBox="0 0 120 140">
+    <ellipse cx="58" cy="88" rx="40" ry="44" fill="#6366f1"/>
+    <ellipse cx="58" cy="100" rx="24" ry="24" fill="#818cf8" opacity="0.55"/>
+    <circle cx="45" cy="78" r="7" fill="#fff"/><circle cx="46.4" cy="79.4" r="3.1" fill="#1e1b4b"/><circle cx="47.6" cy="77.2" r="1.1" fill="#fff"/>
+    <circle cx="71" cy="78" r="7" fill="#fff"/><circle cx="72.4" cy="79.4" r="3.1" fill="#1e1b4b"/><circle cx="73.6" cy="77.2" r="1.1" fill="#fff"/>
+    <circle cx="37" cy="90" r="4" fill="#f9a8d4" opacity=".85"/><circle cx="79" cy="90" r="4" fill="#f9a8d4" opacity=".85"/>
+    <path d="M49 92 q9 8 18 0" stroke="#1e1b4b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <ellipse cx="44" cy="130" rx="10" ry="5" fill="#4f46e5"/><ellipse cx="72" cy="130" rx="10" ry="5" fill="#4f46e5"/>
+    <g id="mascotArm" style="transform-origin: 24px 90px; transform: rotate(35deg);">
+      <rect x="6" y="84" width="26" height="13" rx="6.5" fill="#4f46e5"/>
+      <circle cx="9" cy="86" r="8.5" fill="#818cf8"/>
+      <rect x="5" y="71" width="7" height="11" rx="3.5" fill="#818cf8"/>
+    </g>
+    <path d="M12 60 l3 6 6 3 -6 3 -3 6 -3 -6 -6 -3 6 -3 z" fill="#fbbf24"/>
+  </svg>
+</div>
+
+<!-- Toasts -->
+<div id="toasts" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[90] flex flex-col items-center gap-2 w-full max-w-sm px-4 pointer-events-none"></div>
+
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+<script>
+/* =================================================================
+   OrderPrio – all applikationslogik (lokalt först, Firebase-synk)
+================================================================= */
+const App = (() => {
+  const LS = { cards:'op.cards.v1', settings:'op.settings.v1', stats:'op.stats.v1' };
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+  const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch(e){ return d; } };
+  const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+  /* ---------- State ---------- */
+  let cards = load(LS.cards, []);
+  let settings = Object.assign({
+    volume: 0.7, sound: 'chime', delivery: 'page', mascot: true,
+    theme: 'system', view: 'split', lastPrio: 'high', lastRemind: 60
+  }, load(LS.settings, {}));
+  let stats = Object.assign({ totalDone: 0 }, load(LS.stats, {}));
+  let ui = { filter:'all', query:'', composerOpen:false, doneOpen:false, editingId:null, sortDesc:true, composerPrio:null, composerRemind:null };
+  let localStamp = load('op.stamp.v1', 0);
+  let lastDeleted = null, syncTimer = null, authUser = null, syncMsgShown = false;
+
+  const level = () => Math.floor(stats.totalDone / 3) + 1;
+  const activeCards = () => cards.filter(c => c.status !== 'done');
+  const doneCards = () => cards.filter(c => c.status === 'done');
+
+  function commit(opts={}) {
+    save(LS.cards, cards); save(LS.settings, settings); save(LS.stats, stats);
+    if (opts.stamp !== false) { localStamp = Date.now(); save('op.stamp.v1', localStamp); }
+    render();
+    schedulePush();
+  }
+  function schedulePush() {
+    if (!authUser || !window.Sync) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => window.Sync.push(), 900);
+  }
+
+  /* ---------- Ljud (WebAudio) ---------- */
+  let actx = null;
+  function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }
+  function tone(f, t=0, d=.2, type='sine', v=1, slideTo=null){
+    try {
+      const ctx = ac(), o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(f, ctx.currentTime + t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, ctx.currentTime + t + d);
+      g.gain.setValueAtTime(.0001, ctx.currentTime + t);
+      g.gain.linearRampToValueAtTime(Math.max(.0001, v * settings.volume), ctx.currentTime + t + .012);
+      g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + t + d);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + d + .05);
+    } catch(e){}
+  }
+  const SOUNDS = {
+    chime: { name:'Klocka', desc:'Mjuk tvåtons klocka', play(){ tone(659,.0,.55,'sine',.9); tone(988,.13,.7,'sine',.8); tone(1319,.13,.5,'sine',.25); } },
+    ping:  { name:'Ping', desc:'Korta diskreta pling', play(){ tone(1047,0,.16,'sine',1); tone(1047,.22,.22,'sine',.9); } },
+    alarm: { name:'Larm', desc:'Tydlig tretone-signal', play(){ tone(587,0,.14,'square',.5); tone(587,.18,.14,'square',.5); tone(880,.36,.3,'square',.5); } },
+    flute: { name:'Flöjt', desc:'Glad liten melodi', play(){ tone(523,0,.14,'triangle',.9); tone(659,.13,.14,'triangle',.9); tone(784,.26,.14,'triangle',.9); tone(1047,.39,.32,'triangle',.9); } },
+  };
+  const playReminder = () => { SOUNDS[settings.sound].play(); setTimeout(()=>SOUNDS[settings.sound].play(), 1000); };
+  const playDone = () => { tone(523,0,.12,'triangle',.9); tone(659,.09,.12,'triangle',.9); tone(784,.18,.12,'triangle',.9); tone(1047,.27,.34,'triangle',1); };
+  const playLevelUp = () => { tone(392,0,.14,'triangle',.9); tone(523,.12,.14,'triangle',.9); tone(659,.24,.14,'triangle',.9); tone(784,.36,.16,'triangle',.9); tone(1047,.5,.55,'triangle',1); tone(1319,.5,.55,'sine',.4); };
+  const playCheer = () => { tone(700,0,.15,'sine',.8,1400); tone(900,.14,.16,'sine',.7,1600); tone(1200,.3,.2,'sine',.6,1800); };
+
+  /* ---------- Konfetti ---------- */
+  function confettiDone(){
+    if (typeof confetti === 'undefined') return;
+    const base = { particleCount: 80, spread: 65, startVelocity: 45, colors:['#22c55e','#3b82f6','#eab308','#ec4899'], zIndex: 200 };
+    confetti(Object.assign({}, base, { angle: 60, origin:{ x: 0, y: .72 } }));
+    confetti(Object.assign({}, base, { angle: 120, origin:{ x: 1, y: .72 } }));
+  }
+  function confettiLevelUp(){
+    if (typeof confetti === 'undefined') return;
+    const colors = ['#f59e0b','#f43f5e','#8b5cf6','#06b6d4','#facc15'];
+    confetti({ particleCount: 220, spread: 100, origin:{ x:.5, y:.4 }, colors, scalar: 1.15, zIndex: 200 });
+    const end = Date.now() + 1200;
+    (function frame(){
+      confetti({ particleCount: 6, angle: 60, spread: 60, origin:{ x:0, y:.6 }, colors, zIndex: 200 });
+      confetti({ particleCount: 6, angle: 120, spread: 60, origin:{ x:1, y:.6 }, colors, zIndex: 200 });
+      confetti({ particleCount: 4, spread: 120, origin:{ x: Math.random(), y: .2 }, startVelocity: 30, gravity: .9, colors, zIndex: 200 });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }
+
+  /* ---------- Maskot ---------- */
+  const CHEERS = ['Snyggt jobbat!','Där satt den!','Du rullar på!','Toppeninsats!','Ännu en klar!','Starkt kämpat!','Kung av ordrar!','Imponerande tempo!'];
+  let mascotTimer = null;
+  function showMascot(){
+    if (!settings.mascot) return;
+    $('#mascotBubble').textContent = CHEERS[Math.floor(Math.random()*CHEERS.length)];
+    const m = $('#mascot');
+    m.classList.remove('show'); void m.offsetWidth; m.classList.add('show');
+    playCheer();
+    clearTimeout(mascotTimer);
+    mascotTimer = setTimeout(()=>m.classList.remove('show'), 3600);
+  }
+
+  /* ---------- Nivåsystem ---------- */
+  const LEVEL_MSGS = ['Tempot ökar – fortsätt så!','Du är på riktig gång idag.','Imponerande produktivitet!','Ordrarna bara flyger iväg.','Mäktig insats – ta en stolt paus.','Du är ostoppbar nu!'];
+  function checkLevelUp(){
+    if (stats.totalDone > 0 && stats.totalDone % 3 === 0) {
+      const lv = level();
+      $('#levelBannerNum').textContent = 'Nivå ' + lv;
+      $('#levelBannerMsg').textContent = stats.totalDone + ' avklarade totalt · ' + LEVEL_MSGS[Math.min(Math.floor(lv/2), LEVEL_MSGS.length-1)];
+      const b = $('#levelBanner');
+      b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+      confettiLevelUp();
+      playLevelUp();
+      return true;
+    }
+    return false;
+  }
+
+  /* ---------- Toast ---------- */
+  function toast(msg, opts={}){
+    const t = document.createElement('div');
+    t.className = 'toast pointer-events-auto flex items-center gap-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl px-4 py-2.5 text-sm font-medium';
+    t.innerHTML = (opts.icon ? `<i data-lucide="${opts.icon}" class="h-4 w-4 ${opts.iconCls||'text-indigo-500'}"></i>` : '') +
+      `<span>${esc(msg)}</span>` +
+      (opts.action ? `<button class="text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer" data-act>${esc(opts.action.label)}</button>` : '');
+    if (opts.action) t.querySelector('[data-act]').onclick = () => { opts.action.fn(); dismiss(); };
+    $('#toasts').appendChild(t);
+    refreshIcons();
+    let dismissed = false;
+    const dismiss = () => { if (dismissed) return; dismissed = true; t.classList.add('out'); setTimeout(()=>t.remove(), 260); };
+    setTimeout(dismiss, opts.timeout || 4200);
+  }
+
+  /* ---------- Hjälpare ---------- */
+  const fmtDT = ts => new Date(ts).toLocaleString('sv-SE', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const fmtTime = ts => new Date(ts).toLocaleTimeString('sv-SE', { hour:'2-digit', minute:'2-digit' });
+  const matches = (c, q) => !q || [c.order, c.action, c.note].join(' ').toLowerCase().includes(q.toLowerCase());
+  const prioColor = p => p === 'high' ? 'rose' : 'sky';
+  function sortCards(list, field){
+    return list.slice().sort((a,b) => ui.sortDesc ? b[field]-a[field] : a[field]-b[field]);
+  }
+  function refreshIcons(){ try { window.lucide && lucide.createIcons(); } catch(e){} }
+
+  /* ---------- Kort-CRUD ---------- */
+  function addCard(data){
+    const now = Date.now();
+    const card = {
+      id: uid(), order: data.order.trim(), action: data.action.trim(), note: data.note.trim(),
+      status: data.prio, prevStatus: null, createdAt: now, doneAt: null,
+      remindIn: data.remindIn, highSince: data.prio==='high' ? now : null,
+      dueAt: data.prio==='high' ? now + data.remindIn*60000 : null,
+      reminded: false
+    };
+    cards.unshift(card);
+    settings.lastPrio = data.prio; settings.lastRemind = data.remindIn;
+    commit();
+    toast('Kort tillagt i ' + (data.prio==='high'?'hög':'låg') + ' prioritet', { icon:'circle-check', iconCls:'text-emerald-500' });
+  }
+  function updateCard(id, data){
+    const c = cards.find(x=>x.id===id); if(!c) return;
+    c.order = data.order.trim(); c.action = data.action.trim(); c.note = data.note.trim();
+    if (c.status !== 'done') {
+      if (data.prio !== c.status) moveCard(id, data.prio, true);
+      c.remindIn = data.remindIn;
+      if (c.status==='high') { c.dueAt = (c.highSince||Date.now()) + c.remindIn*60000; if (c.dueAt > Date.now()) c.reminded = false; }
+    }
+    commit();
+    toast('Kort uppdaterat', { icon:'pencil', timeout: 2500 });
+  }
+  function deleteCard(id){
+    const i = cards.findIndex(x=>x.id===id); if(i<0) return;
+    lastDeleted = { card: cards[i] };
+    cards.splice(i,1);
+    commit();
+    toast('Kort raderat', { icon:'trash-2', timeout: 6000, action:{ label:'Ångra', fn(){ cards.unshift(lastDeleted.card); commit(); } } });
+  }
+  function moveCard(id, to, silent){
+    const c = cards.find(x=>x.id===id); if(!c || c.status===to) return;
+    if (to === 'done') {
+      c.prevStatus = c.status === 'done' ? (c.prevStatus||'low') : c.status;
+      c.status = 'done'; c.doneAt = Date.now(); c.reminded = false;
+      stats.totalDone++;
+      commit();
+      confettiDone(); playDone(); showMascot();
+      checkLevelUp();
+    } else {
+      if (c.status === 'done') { // ångra avklarat
+        stats.totalDone = Math.max(0, stats.totalDone - 1);
+        c.doneAt = null;
+      }
+      c.status = to;
+      if (to === 'high') { c.highSince = Date.now(); c.dueAt = Date.now() + (c.remindIn||60)*60000; c.reminded = false; }
+      commit();
+      if (!silent) toast('Flyttad till ' + (to==='high'?'hög':'låg') + ' prioritet', { icon:'arrow-right-left', timeout: 2500 });
+    }
+  }
+  function undoDone(id){
+    const c = cards.find(x=>x.id===id); if(!c || c.status!=='done') return;
+    const back = c.prevStatus || 'low';
+    moveCard(id, back, true);
+    toast('Återgick till ' + (back==='high'?'hög':'låg') + ' prioritet', { icon:'rotate-ccw', timeout: 3000 });
+  }
+  function copyOrder(id, el){
+    const c = cards.find(x=>x.id===id); if(!c) return;
+    const done = () => {
+      el.classList.remove('copied-flash'); void el.offsetWidth; el.classList.add('copied-flash');
+      toast('Ordernummer kopierat: ' + c.order, { icon:'copy', timeout: 2000 });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(c.order).then(done).catch(()=>fallbackCopy(c.order, done));
+    else fallbackCopy(c.order, done);
+  }
+  function fallbackCopy(text, done){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand('copy'); } catch(e){} ta.remove(); done();
+  }
+
+  /* ---------- Påminnelser ---------- */
+  function dueHighCards(){
+    const now = Date.now();
+    return cards.filter(c => c.status==='high' && c.dueAt && !c.reminded && now >= c.dueAt);
+  }
+  function checkReminders(){
+    const due = dueHighCards();
+    if (!due.length) return;
+    due.forEach(c => c.reminded = true);
+    save(LS.cards, cards);
+    playReminder();
+    document.title = '(!) Påminnelse – OrderPrio';
+    const body = due.length + ' högprio-kort väntar: ' + due.map(c=>c.order).join(', ');
+    if (settings.delivery === 'system' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification('OrderPrio – påminnelse', { body, tag:'orderprio-reminder' });
+        n.onclick = () => { window.focus(); openReminder(due.map(c=>c.id)); };
+      } catch(e){ openReminder(due.map(c=>c.id)); }
+      toast('Påminnelse skickad som systemnotis', { icon:'bell-ring', action:{ label:'Visa', fn:()=>openReminder(due.map(c=>c.id)) }, timeout: 8000 });
+    } else {
+      openReminder(due.map(c=>c.id));
+    }
+    render();
+  }
+  function openReminder(ids){
+    const list = ids ? cards.filter(c=>ids.includes(c.id)) : dueHighCards();
+    if (!list.length && !ids) return;
+    $('#reminderSub').textContent = list.length ? list.length + ' kort har nått sin påminnelsetid' : '';
+    $('#reminderList').innerHTML = list.map(c => `
+      <div class="px-5 py-3.5">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-sm font-bold text-rose-600 dark:text-rose-400">${esc(c.order)}</span>
+          <span class="text-[11px] text-neutral-400">påminnelse kl ${fmtTime(c.dueAt)}</span>
+        </div>
+        ${c.action ? `<div class="text-sm mt-0.5">${esc(c.action)}</div>` : ''}
+        <div class="flex gap-2 mt-2">
+          <button class="btn-primary !py-1 !px-3 !text-xs !bg-emerald-600 hover:!bg-emerald-500" onclick="App.reminderDone('${c.id}')"><i data-lucide="check" class="h-3.5 w-3.5"></i>Klarmarkera</button>
+          <button class="btn-ghost !py-1 !px-3 !text-xs" onclick="App.snoozeCard('${c.id}')"><i data-lucide="alarm-clock" class="h-3.5 w-3.5"></i>Påminn igen om 15 min</button>
+        </div>
+      </div>`).join('');
+    const m = $('#reminderModal'); m.classList.remove('hidden'); m.classList.add('flex');
+    refreshIcons();
+  }
+  function reminderDone(id){ moveCard(id, 'done'); refreshReminderModal(id); }
+  function snoozeCard(id){
+    const c = cards.find(x=>x.id===id); if(!c) return;
+    c.dueAt = Date.now() + 15*60000; c.reminded = false;
+    commit();
+    toast('Påminnelse snoozad 15 min – ' + c.order, { icon:'alarm-clock', timeout: 3000 });
+    refreshReminderModal(id);
+  }
+  function refreshReminderModal(){
+    // håll modalen öppen bara om det finns kvarvarande påminda kort som ännu är högprio
+    const still = cards.filter(c => c.status==='high' && c.reminded);
+    if (!still.length) { closeReminder(); return; }
+    openReminder(still.map(c=>c.id));
+  }
+  function closeReminder(){ const m=$('#reminderModal'); m.classList.add('hidden'); m.classList.remove('flex'); document.title='OrderPrio – Håll koll på jobbet'; }
+  function testReminder(){
+    if (settings.delivery === 'system' && 'Notification' in window) {
+      ensureNotifPerm().then(ok => {
+        if (ok) try { new Notification('OrderPrio – testpåminnelse', { body:'Så här ser en systemnotis ut. Ljudet spelas samtidigt.' }); } catch(e){}
+        else toast('Systemnotiser är blockerade – visar på sidan istället', { icon:'triangle-alert' });
+      });
+    }
+    playReminder();
+    const sample = cards.find(c=>c.status==='high') || { id:'test', order:'TEST-12345', action:'Exempelåtgärd – så här ser en påminnelse ut', dueAt: Date.now() };
+    if (sample.id === 'test') {
+      $('#reminderSub').textContent = 'Detta är en testpåminnelse';
+      $('#reminderList').innerHTML = `<div class="px-5 py-3.5">
+        <div class="font-mono text-sm font-bold text-rose-600 dark:text-rose-400">${esc(sample.order)}</div>
+        <div class="text-sm mt-0.5">${esc(sample.action)}</div></div>`;
+      const m = $('#reminderModal'); m.classList.remove('hidden'); m.classList.add('flex');
+    } else {
+      openReminder([sample.id]);
+      $('#reminderSub').textContent = 'Detta är en testpåminnelse (visar ditt äldsta högprio-kort)';
+    }
+    refreshIcons();
+  }
+  async function ensureNotifPerm(){
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    try { return (await Notification.requestPermission()) === 'granted'; } catch(e){ return false; }
+  }
+
+  /* ---------- Rendering ---------- */
+  function render(){
+    renderHeader(); renderComposer(); renderLists(); renderDone(); renderSettings(); renderAuth();
+    refreshIcons();
+  }
+
+  function renderHeader(){
+    $('#levelText').textContent = 'Nivå ' + level();
+    const prog = stats.totalDone % 3;
+    $('#levelDots').innerHTML = [0,1,2].map(i=>`<span class="h-1.5 w-1.5 rounded-full ${i<prog?'bg-amber-500':'bg-amber-300/40 dark:bg-amber-500/20'}"></span>`).join('');
+    $('#levelChip').title = stats.totalDone + ' avklarade totalt · ' + (3-prog) + ' kvar till nivå ' + (level()+1);
+    const dark = document.documentElement.classList.contains('dark');
+    $('#themeIcon').innerHTML = `<i data-lucide="${dark?'sun':'moon'}" class="h-5 w-5"></i>`;
+    $('#sortBtn').innerHTML = `<i data-lucide="${ui.sortDesc?'arrow-down-wide-narrow':'arrow-up-narrow-wide'}" class="h-3.5 w-3.5"></i> ${ui.sortDesc?'Nyast först':'Äldst först'}`;
+    // Filterchips
+    const hq = activeCards().filter(c=>c.status==='high' && matches(c, ui.query)).length;
+    const lq = activeCards().filter(c=>c.status==='low' && matches(c, ui.query)).length;
+    const chips = [['all','Alla', hq+lq],['high','Hög', hq],['low','Låg', lq]];
+    $('#filterChips').innerHTML = chips.map(([k,l,n]) => {
+      const on = ui.filter===k;
+      const cls = k==='high' ? (on?'border-rose-500 bg-rose-500 text-white':'border-neutral-300 dark:border-neutral-700 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10')
+               : k==='low' ? (on?'border-sky-500 bg-sky-500 text-white':'border-neutral-300 dark:border-neutral-700 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10')
+               : (on?'border-indigo-500 bg-indigo-600 text-white':'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800');
+      return `<button class="chip ${cls}" onclick="App.setFilter('${k}')">${l} <span class="opacity-70">${n}</span></button>`;
+    }).join('');
+    // Vy-knappar
+    const segOn = 'bg-indigo-600 text-white', segOff = 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100';
+    $('#viewSplitBtn').className = 'seg-btn ' + (settings.view==='split'?segOn:segOff);
+    $('#viewAllBtn').className = 'seg-btn ' + (settings.view==='all'?segOn:segOff);
+    $('#splitView').classList.toggle('hidden', settings.view!=='split');
+    $('#allView').classList.toggle('hidden', settings.view!=='all');
+    $('#clearSearch').classList.toggle('hidden', !ui.query);
+  }
+
+  function prioBadge(p){
+    return p==='high'
+      ? '<span class="rounded-full bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">Hög</span>'
+      : '<span class="rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">Låg</span>';
+  }
+
+  function cardHTML(c){
+    if (c.id === ui.editingId) return editCardHTML(c);
+    const col = prioColor(c.status==='high'?'high':'low');
+    const isHigh = c.status==='high';
+    const reminded = isHigh && c.reminded;
+    return `
+    <article class="group relative rounded-xl border border-neutral-200 dark:border-neutral-700/70 border-l-4 ${isHigh?'border-l-rose-500':'border-l-sky-500'} bg-neutral-50/60 dark:bg-neutral-800/40 p-3 ${reminded?'remind-flash':''}" data-id="${c.id}">
+      <div class="flex items-center gap-2 flex-wrap">
+        <button class="font-mono text-sm font-bold ${isHigh?'text-rose-600 dark:text-rose-400':'text-sky-600 dark:text-sky-400'} hover:underline cursor-copy select-text" title="Klicka för att kopiera ordernumret" onclick="App.copyOrder('${c.id}', this)">${esc(c.order)}</button>
+        ${prioBadge(c.status)}
+        ${reminded ? '<span class="flex items-center gap-1 rounded-full bg-rose-600 text-white px-2 py-0.5 text-[10px] font-bold"><i data-lucide="bell-ring" class="h-3 w-3"></i>Påmind!</span>' : ''}
+        <span class="ml-auto text-[11px] text-neutral-400 dark:text-neutral-500 whitespace-nowrap" title="Skapad"><i data-lucide="calendar" class="inline h-3 w-3 -mt-0.5 mr-0.5"></i>${fmtDT(c.createdAt)}</span>
+      </div>
+      ${c.action ? `<div class="mt-1.5 text-sm font-semibold select-text">${esc(c.action)}</div>` : ''}
+      ${c.note ? `<div class="mt-1 text-sm text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap break-words select-text">${esc(c.note)}</div>` : ''}
+      <div class="mt-2.5 flex items-center gap-1 flex-wrap">
+        ${isHigh && c.dueAt ? `<span class="text-[11px] font-medium ${c.reminded?'text-rose-500':'text-neutral-400 dark:text-neutral-500'} mr-auto flex items-center gap-1"><i data-lucide="alarm-clock" class="h-3 w-3"></i>${c.reminded?'Påmind':'Påminn'} ${fmtTime(c.dueAt)}</span>` : '<span class="mr-auto"></span>'}
+        ${isHigh
+          ? `<button class="card-action" title="Flytta till låg prioritet" onclick="App.moveCard('${c.id}','low')"><i data-lucide="arrow-down" class="h-3.5 w-3.5"></i>Låg</button>`
+          : `<button class="card-action" title="Flytta till hög prioritet" onclick="App.moveCard('${c.id}','high')"><i data-lucide="arrow-up" class="h-3.5 w-3.5"></i>Hög</button>`}
+        <button class="card-action !text-emerald-600 dark:!text-emerald-400" title="Klarmarkera" onclick="App.moveCard('${c.id}','done')"><i data-lucide="check" class="h-3.5 w-3.5"></i>Klar</button>
+        <button class="card-action" title="Redigera" onclick="App.startEdit('${c.id}')"><i data-lucide="pencil" class="h-3.5 w-3.5"></i></button>
+        <button class="card-action hover:!text-red-500" title="Radera" onclick="App.deleteCard('${c.id}')"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+      </div>
+    </article>`;
+  }
+
+  function editCardHTML(c){
+    const isHigh = c.status==='high';
+    return `
+    <article class="rounded-xl border-2 border-indigo-400 dark:border-indigo-500/60 bg-white dark:bg-neutral-800 p-3 space-y-2" data-id="${c.id}">
+      <div class="grid sm:grid-cols-2 gap-2">
+        <div><label class="label">Ordernummer</label><input id="e-order-${c.id}" class="inp font-mono" value="${esc(c.order)}"></div>
+        <div><label class="label">Åtgärd</label><input id="e-action-${c.id}" class="inp" value="${esc(c.action)}"></div>
+      </div>
+      <div><label class="label">Anteckning</label><textarea id="e-note-${c.id}" class="inp" rows="2">${esc(c.note)}</textarea></div>
+      ${c.status!=='done' ? `
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex rounded-lg border border-neutral-300 dark:border-neutral-700 p-0.5 gap-0.5">
+          <button class="seg-btn e-prio ${isHigh?'bg-rose-500 text-white':'text-neutral-500'}" data-p="high" onclick="App.editPrio('${c.id}','high',this)">Hög</button>
+          <button class="seg-btn e-prio ${!isHigh?'bg-sky-500 text-white':'text-neutral-500'}" data-p="low" onclick="App.editPrio('${c.id}','low',this)">Låg</button>
+        </div>
+        <div class="e-remind flex items-center gap-1 ${isHigh?'':'hidden'}">
+          <span class="text-[11px] font-semibold text-neutral-400 mr-1">Påminn om:</span>
+          ${[15,30,60,120].map(m=>`<button class="chip e-rem !px-2 ${m===(c.remindIn||60)?'border-indigo-500 bg-indigo-600 text-white':'border-neutral-300 dark:border-neutral-700 text-neutral-500'}" data-m="${m}" onclick="App.editRemind('${c.id}',${m},this)">${m<60?m+' m':m/60+' h'}</button>`).join('')}
+        </div>
+      </div>` : ''}
+      <div class="flex gap-2 pt-1">
+        <button class="btn-primary !py-1.5 !text-xs" onclick="App.saveEdit('${c.id}')"><i data-lucide="check" class="h-3.5 w-3.5"></i>Spara</button>
+        <button class="btn-ghost !py-1.5 !text-xs" onclick="App.cancelEdit()">Avbryt</button>
+      </div>
+    </article>`;
+  }
+
+  function emptyHTML(msg, icon){
+    return `<div class="py-8 text-center">
+      <i data-lucide="${icon}" class="h-8 w-8 mx-auto text-neutral-300 dark:text-neutral-600"></i>
+      <p class="mt-2 text-xs font-medium text-neutral-400 dark:text-neutral-500">${esc(msg)}</p>
+    </div>`;
+  }
+
+  function renderLists(){
+    const act = activeCards().filter(c => matches(c, ui.query));
+    const high = sortCards(act.filter(c=>c.status==='high' && ui.filter!=='low'), 'createdAt');
+    const low = sortCards(act.filter(c=>c.status==='low' && ui.filter!=='high'), 'createdAt');
+    $('#countHigh').textContent = high.length;
+    $('#countLow').textContent = low.length;
+    // I delad vy: dölj kolumn om filter
+    const cols = document.querySelectorAll('#splitView > section');
+    if (cols.length===2){
+      cols[0].style.display = ui.filter==='low' ? 'none' : '';
+      cols[1].style.display = ui.filter==='high' ? 'none' : '';
+      $('#splitView').classList.toggle('md:grid-cols-2', ui.filter==='all');
+      $('#splitView').classList.toggle('md:grid-cols-1', ui.filter!=='all');
+    }
+    $('#listHigh').innerHTML = high.length ? high.map(cardHTML).join('') : emptyHTML(ui.query ? 'Inga träffar bland högprio' : 'Inga högprio-kort – lugnt läge', 'coffee');
+    $('#listLow').innerHTML = low.length ? low.map(cardHTML).join('') : emptyHTML(ui.query ? 'Inga träffar bland lågprio' : 'Inga lågprio-kort', 'inbox');
+    const all = sortCards(act.filter(c=>ui.filter==='all'||c.status===ui.filter), 'createdAt');
+    $('#countAll').textContent = all.length;
+    $('#listAll').innerHTML = all.length ? all.map(cardHTML).join('') : emptyHTML(ui.query ? 'Inga träffar' : 'Inga aktiva kort – allt avklarat!', 'party-popper');
+  }
+
+  function renderDone(){
+    const done = doneCards();
+    const q = ui.query;
+    const list = sortCards(done.filter(c=>matches(c,q)), 'doneAt');
+    const today = new Date().toDateString();
+    const nToday = done.filter(c=>c.doneAt && new Date(c.doneAt).toDateString()===today).length;
+    $('#countDone').textContent = done.length;
+    $('#doneToday').textContent = nToday ? '· ' + nToday + ' idag' : '';
+    if (q && list.length && !ui.doneOpen) { ui.doneOpen = true; }
+    $('#doneBody').classList.toggle('hidden', !ui.doneOpen);
+    $('#doneChevron').setAttribute('data-lucide', ui.doneOpen ? 'chevron-up' : 'chevron-down');
+    if (!list.length) {
+      $('#listDone').innerHTML = emptyHTML(q ? 'Inga träffar bland avklarade' : 'Inga avklarade kort ännu – de sparas här utan att ta plats', 'archive');
+      return;
+    }
+    $('#listDone').innerHTML = list.map(c => {
+      if (c.id === ui.editingId) return editCardHTML(c);
+      return `
+      <article class="flex items-center gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 border-l-4 border-l-emerald-500 bg-neutral-50/60 dark:bg-neutral-800/30 px-3 py-2 opacity-90">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <button class="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-copy select-text" title="Klicka för att kopiera" onclick="App.copyOrder('${c.id}', this)">${esc(c.order)}</button>
+            <span class="rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-1.5 py-px text-[9px] font-bold uppercase">Klar</span>
+            ${c.prevStatus ? `<span class="text-[9px] font-semibold ${c.prevStatus==='high'?'text-rose-400':'text-sky-400'} uppercase">${c.prevStatus==='high'?'hög':'låg'}</span>` : ''}
+          </div>
+          ${c.action ? `<div class="text-xs font-medium truncate select-text">${esc(c.action)}</div>` : ''}
+          <div class="text-[10px] text-neutral-400">Skapad ${fmtDT(c.createdAt)} · Avklarad ${c.doneAt?fmtDT(c.doneAt):'–'}</div>
+        </div>
+        <button class="icon-btn !h-7 !w-7" title="Ångra – återgå till ${c.prevStatus==='high'?'hög':'låg'} prioritet" onclick="App.undoDone('${c.id}')"><i data-lucide="rotate-ccw" class="h-4 w-4"></i></button>
+        <button class="icon-btn !h-7 !w-7" title="Redigera" onclick="App.startEdit('${c.id}')"><i data-lucide="pencil" class="h-4 w-4"></i></button>
+        <button class="icon-btn !h-7 !w-7 hover:!text-red-500" title="Radera" onclick="App.deleteCard('${c.id}')"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+      </article>`;
+    }).join('');
+  }
+
+  /* ---------- Kompositör ---------- */
+  function renderComposer(){
+    const w = $('#composerWrap');
+    if (!ui.composerOpen) {
+      w.innerHTML = `
+        <button class="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-500/5 py-3.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:border-indigo-400 cursor-pointer" onclick="App.openComposer()">
+          <i data-lucide="plus" class="h-4 w-4"></i> Ny order
+          <kbd class="rounded border border-indigo-300 dark:border-indigo-500/40 px-1.5 py-0.5 text-[10px] font-mono">N</kbd>
+        </button>`;
+      return;
+    }
+    // bevara inmatad text vid om-rendering
+    const prev = { o: $('#c-order') ? $('#c-order').value : null, a: $('#c-action') ? $('#c-action').value : null, n: $('#c-note') ? $('#c-note').value : null };
+    const p = ui.composerPrio || settings.lastPrio;
+    const r = ui.composerRemind || settings.lastRemind;
+    w.innerHTML = `
+    <div class="modal-card rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="font-extrabold text-sm flex items-center gap-2"><i data-lucide="circle-plus" class="h-4 w-4 text-indigo-500"></i> Ny order</h3>
+        <button class="icon-btn !h-7 !w-7" title="Stäng (Esc)" onclick="App.closeComposer()"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div><label class="label">Ordernummer *</label><input id="c-order" class="inp font-mono" placeholder="t.ex. 45478921" autocomplete="off"></div>
+        <div><label class="label">Åtgärd</label><input id="c-action" class="inp" placeholder="t.ex. Kontakta kund om reservdel" autocomplete="off"></div>
+      </div>
+      <div><label class="label">Anteckning</label><textarea id="c-note" class="inp" rows="2" placeholder="Valfria detaljer…"></textarea></div>
+      <div class="flex flex-wrap items-center gap-3">
+        <div>
+          <label class="label">Prioritet</label>
+          <div class="flex rounded-lg border border-neutral-300 dark:border-neutral-700 p-0.5 gap-0.5">
+            <button id="c-prio-high" class="seg-btn" onclick="App.composerPrio('high')">Hög</button>
+            <button id="c-prio-low" class="seg-btn" onclick="App.composerPrio('low')">Låg</button>
+          </div>
+        </div>
+        <div id="c-remindWrap">
+          <label class="label">Påminn mig om</label>
+          <div class="flex gap-1">
+            ${[15,30,60,120].map(m=>`<button class="chip c-rem !px-2.5" data-m="${m}" onclick="App.composerRemind(${m})">${m<60?m+' min':(m/60)+' h'}</button>`).join('')}
+          </div>
+        </div>
+        <div class="ml-auto flex gap-2 self-end">
+          <button class="btn-ghost" onclick="App.closeComposer()">Avbryt</button>
+          <button class="btn-primary" onclick="App.submitComposer()"><i data-lucide="plus" class="h-4 w-4"></i>Lägg till</button>
+        </div>
+      </div>
+      <p class="text-[10px] text-neutral-400">Ctrl/⌘ + Enter lägger till direkt · Esc stänger</p>
+    </div>`;
+    if (prev.o !== null) { $('#c-order').value = prev.o; $('#c-action').value = prev.a; $('#c-note').value = prev.n; }
+    paintComposer(p, r);
+    if (prev.o === null) setTimeout(()=>{ const o=$('#c-order'); if(o) o.focus(); }, 30);
+    ['c-order','c-action','c-note'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='Enter') submitComposer(); });
+    });
+  }
+  function paintComposer(p, r){
+    const hi = $('#c-prio-high'), lo = $('#c-prio-low');
+    if (!hi) return;
+    hi.className = 'seg-btn ' + (p==='high' ? 'bg-rose-500 text-white' : 'text-neutral-500 dark:text-neutral-400');
+    lo.className = 'seg-btn ' + (p==='low' ? 'bg-sky-500 text-white' : 'text-neutral-500 dark:text-neutral-400');
+    const rw = $('#c-remindWrap');
+    rw.style.visibility = p==='high' ? 'visible' : 'hidden';
+    document.querySelectorAll('.c-rem').forEach(b => {
+      const on = +b.dataset.m === r;
+      b.className = 'chip c-rem !px-2.5 ' + (on ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-neutral-300 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400');
+    });
+  }
+  function submitComposer(){
+    const order = $('#c-order').value;
+    if (!order.trim()) { $('#c-order').classList.add('!border-red-500','!ring-2','!ring-red-500/30'); $('#c-order').focus(); toast('Ordernummer krävs', { icon:'triangle-alert', iconCls:'text-red-500', timeout: 2500 }); return; }
+    addCard({ order, action: $('#c-action').value, note: $('#c-note').value, prio: ui.composerPrio || settings.lastPrio, remindIn: ui.composerRemind || settings.lastRemind });
+    ui.composerOpen = false; ui.composerPrio = null; ui.composerRemind = null;
+    render();
+  }
+
+  /* ---------- Redigering ---------- */
+  let editTmp = {};
+  function startEdit(id){ ui.editingId = id; const c = cards.find(x=>x.id===id); editTmp = { prio: c.status!=='done'?c.status:(c.prevStatus||'low'), remind: c.remindIn || 60 }; render(); }
+  function cancelEdit(){ ui.editingId = null; render(); }
+  function saveEdit(id){
+    const g = s => document.getElementById(s);
+    if (!g(`e-order-${id}`).value.trim()) { toast('Ordernummer krävs', { icon:'triangle-alert', iconCls:'text-red-500', timeout: 2500 }); return; }
+    ui.editingId = null;
+    updateCard(id, { order: g(`e-order-${id}`).value, action: g(`e-action-${id}`).value, note: g(`e-note-${id}`).value, prio: editTmp.prio, remindIn: editTmp.remind });
+  }
+  function editPrio(id, p, btn){
+    editTmp.prio = p;
+    const box = btn.closest('article');
+    box.querySelectorAll('.e-prio').forEach(b=>{
+      const bp = b.dataset.p;
+      b.className = 'seg-btn e-prio ' + (bp===p ? (p==='high'?'bg-rose-500 text-white':'bg-sky-500 text-white') : 'text-neutral-500');
+    });
+    const rw = box.querySelector('.e-remind');
+    if (rw) rw.classList.toggle('hidden', p!=='high');
+  }
+  function editRemind(id, m, btn){
+    editTmp.remind = m;
+    const box = btn.closest('article');
+    box.querySelectorAll('.e-rem').forEach(b=>{
+      const on = +b.dataset.m === m;
+      b.className = 'chip e-rem !px-2 ' + (on?'border-indigo-500 bg-indigo-600 text-white':'border-neutral-300 dark:border-neutral-700 text-neutral-500');
+    });
+  }
+
+  /* ---------- Inställningar ---------- */
+  let confirmArmed = {};
+  function openSettings(section){
+    $('#settingsOverlay').classList.remove('hidden');
+    $('#settingsDrawer').classList.remove('translate-x-full');
+    renderSettings();
+    if (section) setTimeout(()=>{ const el = document.getElementById('set-'+section); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 120);
+  }
+  function closeSettings(){ $('#settingsOverlay').classList.add('hidden'); $('#settingsDrawer').classList.add('translate-x-full'); confirmArmed = {}; }
+  function arm(key, label, fn){
+    if (!confirmArmed[key]) {
+      confirmArmed[key] = true; renderSettings();
+      setTimeout(()=>{ if(confirmArmed[key]){ confirmArmed[key]=false; renderSettings(); } }, 4000);
+      return;
+    }
+    confirmArmed[key] = false; fn();
+  }
+  const REM_OPTS = [15,30,60,120];
+
+  function renderSettings(){
+    const body = $('#settingsBody');
+    if (!body || $('#settingsOverlay').classList.contains('hidden')) return;
+    const today = new Date().toDateString();
+    const nToday = doneCards().filter(c=>c.doneAt && new Date(c.doneAt).toDateString()===today).length;
+    const dBtn = (key, label, warn) => `<button class="danger-btn ${confirmArmed[key]?'armed':''}" onclick="App.danger('${key}')">${confirmArmed[key] ? 'Bekräfta: ' + warn + ' – klicka igen!' : label}</button>`;
+    body.innerHTML = `
+    <!-- Påminnelser -->
+    <div class="settings-row">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="bell-ring" class="h-4 w-4 text-rose-500"></i> Påminnelser</h4>
+      <label class="label">Visa påminnelse</label>
+      <div class="space-y-1.5 mb-4">
+        <label class="flex items-center gap-2.5 text-sm cursor-pointer rounded-lg border ${settings.delivery==='page'?'border-indigo-400 bg-indigo-50 dark:bg-indigo-500/10':'border-neutral-200 dark:border-neutral-700'} px-3 py-2">
+          <input type="radio" name="delivery" ${settings.delivery==='page'?'checked':''} onchange="App.setDelivery('page')" class="accent-indigo-600">
+          <span><span class="font-semibold">På webbsidan</span> <span class="text-xs text-neutral-400 block">Påminnelse-ruta inne i dokumentet</span></span>
+        </label>
+        <label class="flex items-center gap-2.5 text-sm cursor-pointer rounded-lg border ${settings.delivery==='system'?'border-indigo-400 bg-indigo-50 dark:bg-indigo-500/10':'border-neutral-200 dark:border-neutral-700'} px-3 py-2">
+          <input type="radio" name="delivery" ${settings.delivery==='system'?'checked':''} onchange="App.setDelivery('system')" class="accent-indigo-600">
+          <span><span class="font-semibold">Systemnotis</span> <span class="text-xs text-neutral-400 block">Operativsystemets notiser – funkar i bakgrunden</span></span>
+        </label>
+      </div>
+      <label class="label">Påminnelseljud</label>
+      <div class="space-y-1.5 mb-4">
+        ${Object.entries(SOUNDS).map(([k,s])=>`
+        <div class="flex items-center gap-2.5 rounded-lg border ${settings.sound===k?'border-indigo-400 bg-indigo-50 dark:bg-indigo-500/10':'border-neutral-200 dark:border-neutral-700'} px-3 py-2">
+          <input type="radio" name="snd" ${settings.sound===k?'checked':''} onchange="App.setSound('${k}')" class="accent-indigo-600 cursor-pointer">
+          <span class="text-sm"><span class="font-semibold">${s.name}</span> <span class="text-xs text-neutral-400 block">${s.desc}</span></span>
+          <button class="icon-btn ml-auto !h-7 !w-7" title="Prova ljudet" onclick="App.previewSound('${k}')"><i data-lucide="play" class="h-3.5 w-3.5"></i></button>
+        </div>`).join('')}
+      </div>
+      <label class="label">Volym: <span id="volPct">${Math.round(settings.volume*100)}%</span></label>
+      <input type="range" min="0" max="100" value="${Math.round(settings.volume*100)}" class="w-full accent-indigo-600" oninput="App.setVolume(this.value)">
+      <button class="btn-ghost w-full mt-3" onclick="App.testReminder()"><i data-lucide="bell-ring" class="h-4 w-4"></i> Skicka test-påminnelse</button>
+    </div>
+
+    <!-- Utseende & effekter -->
+    <div class="settings-row">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="palette" class="h-4 w-4 text-indigo-500"></i> Utseende & effekter</h4>
+      <label class="label">Tema</label>
+      <div class="flex rounded-lg border border-neutral-300 dark:border-neutral-700 p-0.5 gap-0.5 mb-4 w-fit">
+        ${[['light','Ljust'],['dark','Mörkt'],['system','System']].map(([k,l])=>`<button class="seg-btn ${settings.theme===k?'bg-indigo-600 text-white':'text-neutral-500 dark:text-neutral-400'}" onclick="App.setTheme('${k}')">${l}</button>`).join('')}
+      </div>
+      <label class="flex items-center gap-3 text-sm cursor-pointer">
+        <input type="checkbox" ${settings.mascot?'checked':''} onchange="App.setMascot(this.checked)" class="accent-indigo-600 h-4 w-4">
+        <span><span class="font-semibold">Uppmuntrande karaktär</span> <span class="text-xs text-neutral-400 block">En glad figur med tummen upp dyker upp vid varje avklarat kort</span></span>
+      </label>
+    </div>
+
+    <!-- Statistik & nivå -->
+    <div class="settings-row" id="set-stats">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="trophy" class="h-4 w-4 text-amber-500"></i> Nivå & statistik</h4>
+      <div class="flex items-center gap-4 mb-3">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 font-extrabold text-xl">${level()}</div>
+        <div class="flex-1">
+          <div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-1">${3-(stats.totalDone%3)} kort kvar till nivå ${level()+1}</div>
+          <div class="h-2 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all" style="width:${(stats.totalDone%3)/3*100}%"></div></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="rounded-lg bg-neutral-100 dark:bg-neutral-800 py-2"><div class="font-extrabold">${stats.totalDone}</div><div class="text-[10px] text-neutral-400 font-semibold">Avklarade totalt</div></div>
+        <div class="rounded-lg bg-neutral-100 dark:bg-neutral-800 py-2"><div class="font-extrabold">${nToday}</div><div class="text-[10px] text-neutral-400 font-semibold">Idag</div></div>
+        <div class="rounded-lg bg-neutral-100 dark:bg-neutral-800 py-2"><div class="font-extrabold">${activeCards().length}</div><div class="text-[10px] text-neutral-400 font-semibold">Aktiva just nu</div></div>
+      </div>
+      <p class="text-[11px] text-neutral-400 mt-3">Var tredje avklarat kort höjer din nivå och firas med extra konfetti. Nivån syns diskret högst upp på sidan.</p>
+    </div>
+
+    <!-- Konto -->
+    <div class="settings-row">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-2"><i data-lucide="cloud" class="h-4 w-4 text-indigo-500"></i> Online-synk</h4>
+      <div id="settingsAuthSlot"></div>
+    </div>
+
+    <!-- Data -->
+    <div class="settings-row">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="database" class="h-4 w-4 text-sky-500"></i> Data & backup</h4>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <button class="btn-ghost" onclick="App.exportData()"><i data-lucide="download" class="h-4 w-4"></i> Exportera</button>
+        <button class="btn-ghost" onclick="App.pickImport()"><i data-lucide="upload" class="h-4 w-4"></i> Importera</button>
+      </div>
+      ${pendingImport ? `<button class="danger-btn ${confirmArmed['import']?'armed':''} mb-3" onclick="App.danger('import')">${confirmArmed['import']?'Bekräfta: ersätt alla befintliga kort!':'Importera ' + pendingImport.cards.length + ' kort (ersätter nuvarande)'}</button>` : ''}
+      <div class="border-t border-neutral-200 dark:border-neutral-800 pt-3 space-y-2">
+        <p class="text-[11px] font-bold uppercase tracking-wide text-red-500">Farozon – dubbel bekräftelse krävs</p>
+        ${dBtn('delActive','Radera alla aktiva kort ('+activeCards().length+')','aktiva raderas')}
+        ${dBtn('delDone','Radera alla avklarade kort ('+doneCards().length+')','avklarade raderas')}
+        ${dBtn('delAll','Radera ALLT inkl. statistik','allt raderas')}
+      </div>
+    </div>
+
+    <!-- Snabbkommandon -->
+    <div class="settings-row">
+      <h4 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="keyboard" class="h-4 w-4 text-neutral-500"></i> Snabbkommandon</h4>
+      ${shortcutList()}
+    </div>
+    <p class="text-center text-[10px] text-neutral-400 pb-2">OrderPrio · data sparas lokalt i webbläsaren (localStorage)</p>`;
+    renderAuthSlot();
+    refreshIcons();
+  }
+
+  function shortcutList(){
+    const rows = [['N','Nytt kort'],['Esc','Stäng ruta / avbryt'],['/ eller Ctrl+K','Fokusera sök'],['T','Växla tema'],['V','Växla vy (fält/lista)'],['1 / 2 / 3','Filter: alla / hög / låg'],['A','Visa/dölj avklarat'],['?','Denna hjälp']];
+    return '<div class="grid grid-cols-1 gap-1">' + rows.map(([k,d])=>`<div class="flex items-center gap-3 text-xs py-1"><kbd class="rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-0.5 font-semibold min-w-8 text-center">${k}</kbd><span class="text-neutral-600 dark:text-neutral-400">${d}</span></div>`).join('') + '</div>';
+  }
+
+  /* ---------- Farozon ---------- */
+  function danger(key){
+    const fns = {
+      delActive: () => arm(key,'', ()=>{ cards = cards.filter(c=>c.status==='done'); commit(); toast('Alla aktiva kort raderade', { icon:'trash-2', iconCls:'text-red-500' }); }),
+      delDone: () => arm(key,'', ()=>{ cards = cards.filter(c=>c.status!=='done'); commit(); toast('Alla avklarade kort raderade', { icon:'trash-2', iconCls:'text-red-500' }); }),
+      delAll: () => arm(key,'', ()=>{ cards = []; stats.totalDone = 0; commit(); toast('Allt har raderats – nystart!', { icon:'trash-2', iconCls:'text-red-500' }); }),
+      import: () => arm(key,'', ()=>applyImport()),
+    };
+    if (fns[key]) fns[key]();
+  }
+
+  /* ---------- Export / Import ---------- */
+  function exportData(){
+    const data = { app:'OrderPrio', version:1, exportedAt: new Date().toISOString(), cards, stats, settings: { sound: settings.sound, volume: settings.volume, delivery: settings.delivery, mascot: settings.mascot, theme: settings.theme } };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'orderprio-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Backup exporterad (' + cards.length + ' kort)', { icon:'download', iconCls:'text-emerald-500' });
+  }
+  let pendingImport = null;
+  function pickImport(){ $('#importFile').click(); }
+  function handleImportFile(file){
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        const raw = Array.isArray(data) ? data : data.cards;
+        if (!Array.isArray(raw) || !raw.length) throw new Error('inga kort');
+        const clean = raw.filter(c => c && (c.order !== undefined)).map(c => ({
+          id: String(c.id || uid()).replace(/'/g, '').trim() || uid(),
+          order: String(c.order||''), action: String(c.action||''), note: String(c.note||''),
+          status: ['high','low','done'].includes(c.status) ? c.status : 'low',
+          prevStatus: ['high','low'].includes(c.prevStatus) ? c.prevStatus : null,
+          createdAt: +c.createdAt || Date.now(), doneAt: c.doneAt ? +c.doneAt : null,
+          remindIn: REM_OPTS.includes(+c.remindIn) ? +c.remindIn : 60,
+          highSince: c.highSince ? +c.highSince : null,
+          dueAt: c.dueAt ? +c.dueAt : null, reminded: !!c.reminded
+        }));
+        if (!clean.length) throw new Error('ogiltiga');
+        pendingImport = { cards: clean, stats: data.stats && typeof data.stats.totalDone==='number' ? data.stats : null };
+        renderSettings();
+        toast('Filen läst – bekräfta importen i inställningarna', { icon:'file-check', timeout: 5000 });
+      } catch(e) {
+        toast('Kunde inte läsa filen – är det en OrderPrio-backup?', { icon:'triangle-alert', iconCls:'text-red-500', timeout: 5000 });
+      }
+    };
+    r.readAsText(file);
+  }
+  function applyImport(){
+    if (!pendingImport) return;
+    cards = pendingImport.cards;
+    if (pendingImport.stats) stats.totalDone = Math.max(0, pendingImport.stats.totalDone);
+    pendingImport = null;
+    commit();
+    toast('Import klar – ' + cards.length + ' kort inlästa', { icon:'circle-check', iconCls:'text-emerald-500', timeout: 5000 });
+  }
+
+  /* ---------- Tema ---------- */
+  function applyTheme(){
+    const t = settings.theme;
+    const dark = t==='dark' || (t==='system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  }
+  function toggleTheme(){
+    const dark = document.documentElement.classList.contains('dark');
+    settings.theme = dark ? 'light' : 'dark';
+    applyTheme(); commit({stamp:false});
+  }
+
+  /* ---------- Autentisering & synk (brygga mot Firebase-modul) ---------- */
+  function renderAuth(){
+    const btn = $('#authBtn');
+    if (authUser) {
+      btn.innerHTML = `<span class="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white text-[10px] font-extrabold">${esc(authUser.email[0].toUpperCase())}</span><span class="hidden sm:inline max-w-28 truncate">${esc(authUser.email)}</span><span class="h-2 w-2 rounded-full bg-emerald-500" title="Synk aktiv"></span>`;
+    } else {
+      btn.innerHTML = `<i data-lucide="log-in" class="h-4 w-4"></i><span class="hidden sm:inline">Logga in</span>`;
+    }
+    refreshIcons();
+  }
+  function renderAuthSlot(){
+    const slot = $('#settingsAuthSlot');
+    if (!slot) return;
+    if (authUser) {
+      slot.innerHTML = `<div class="flex items-center gap-2 text-sm"><span class="h-2 w-2 rounded-full bg-emerald-500"></span><span class="font-semibold truncate">${esc(authUser.email)}</span><button class="ml-auto text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer" onclick="App.toggleAuth(true)">Hantera</button></div>`;
+    } else {
+      slot.innerHTML = `<p class="text-xs text-neutral-400 mb-2">Korten sparas alltid lokalt. Logga in för att synka dem mellan enheter via Firebase.</p><button class="btn-primary w-full !py-1.5" onclick="App.toggleAuth(true)"><i data-lucide="log-in" class="h-4 w-4"></i> Logga in / skapa konto</button>`;
+    }
+  }
+  function toggleAuth(open){
+    const m = $('#authModal');
+    if (!open) { m.classList.add('hidden'); m.classList.remove('flex'); return; }
+    renderAuthModal();
+    m.classList.remove('hidden'); m.classList.add('flex');
+  }
+  function renderAuthModal(err){
+    const b = $('#authBody');
+    if (authUser) {
+      b.innerHTML = `
+        <div class="rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-3 text-sm mb-4">
+          <div class="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-400"><i data-lucide="circle-check" class="h-4 w-4"></i> Inloggad & synkad</div>
+          <div class="text-xs text-emerald-600/80 dark:text-emerald-400/70 mt-0.5 truncate">${esc(authUser.email)}</div>
+        </div>
+        <p class="text-xs text-neutral-400 mb-4">Ändringar synkas automatiskt till molnet när du är inloggad. Senast lokalt uppdaterad: ${localStamp ? fmtDT(localStamp) : '–'}.</p>
+        <button class="btn-ghost w-full" onclick="App.signOut()"><i data-lucide="log-out" class="h-4 w-4"></i> Logga ut</button>`;
+    } else {
+      b.innerHTML = `
+        <p class="text-xs text-neutral-400 mb-4">Dina kort sparas alltid lokalt i webbläsaren. Logga in med e-post och lösenord för att även synka dem online (kräver att Firestore är aktiverat i ditt Firebase-projekt).</p>
+        ${!window.Sync ? `<div class="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs p-2.5 mb-3">Synkmodulen kunde inte laddas (offline?). Lokal lagring fungerar ändå.</div>` : ''}
+        ${err ? `<div class="rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 text-xs p-2.5 mb-3">${esc(err)}</div>` : ''}
+        <div class="space-y-2.5">
+          <input id="authEmail" type="email" class="inp" placeholder="E-postadress" autocomplete="email">
+          <input id="authPass" type="password" class="inp" placeholder="Lösenord (minst 6 tecken)" autocomplete="current-password">
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-4">
+          <button class="btn-primary" onclick="App.signIn()"><i data-lucide="log-in" class="h-4 w-4"></i> Logga in</button>
+          <button class="btn-ghost" onclick="App.signUp()"><i data-lucide="user-plus" class="h-4 w-4"></i> Skapa konto</button>
+        </div>`;
+      const p = $('#authPass'); if (p) p.addEventListener('keydown', e=>{ if(e.key==='Enter') signIn(); });
+      setTimeout(()=>{ const e=$('#authEmail'); if(e) e.focus(); }, 30);
+    }
+    refreshIcons();
+  }
+  function authErr(e){
+    const map = { 'auth/user-not-found':'Fel e-post eller lösenord', 'auth/wrong-password':'Fel e-post eller lösenord', 'auth/invalid-credential':'Fel e-post eller lösenord', 'auth/email-already-in-use':'E-posten används redan – logga in istället', 'auth/weak-password':'Lösenordet måste vara minst 6 tecken', 'auth/invalid-email':'Ogiltig e-postadress', 'auth/too-many-requests':'För många försök – vänta en stund', 'auth/network-request-failed':'Nätverksfel – kontrollera uppkopplingen' };
+    return map[e && e.code] || ('Fel: ' + (e && e.code ? e.code.replace('auth/','') : 'okänt'));
+  }
+  function signIn(){
+    if (!window.Sync) return renderAuthModal('Synkmodulen är inte laddad');
+    const e = $('#authEmail').value.trim(), p = $('#authPass').value;
+    if (!e || !p) return renderAuthModal('Fyll i både e-post och lösenord');
+    window.Sync.signIn(e,p).catch(err => renderAuthModal(authErr(err)));
+  }
+  function signUp(){
+    if (!window.Sync) return renderAuthModal('Synkmodulen är inte laddad');
+    const e = $('#authEmail').value.trim(), p = $('#authPass').value;
+    if (!e || !p) return renderAuthModal('Fyll i både e-post och lösenord');
+    window.Sync.signUp(e,p).catch(err => renderAuthModal(authErr(err)));
+  }
+  function signOut(){ if (window.Sync) window.Sync.signOut().then(()=>toast('Utloggad – lokalt läge', { icon:'log-out' })); }
+
+  function onAuthChanged(user){
+    authUser = user;
+    renderAuth(); renderAuthSlot(); renderSettings();
+    if (user) { toggleAuth(false); toast('Inloggad som ' + user.email + ' – synkar…', { icon:'cloud', timeout: 3000 }); }
+    refreshIcons();
+  }
+  function applyRemote(data){
+    if (Array.isArray(data.cards)) cards = data.cards;
+    if (data.stats && typeof data.stats.totalDone === 'number') stats.totalDone = data.stats.totalDone;
+    localStamp = data.updatedAt || Date.now();
+    save(LS.cards, cards); save(LS.stats, stats); save('op.stamp.v1', localStamp);
+    render();
+    toast('Synk uppdaterad från molnet', { icon:'cloud-download', timeout: 2500 });
+  }
+  function syncError(e){
+    if (syncMsgShown) return; syncMsgShown = true;
+    toast('Molnsynk misslyckades – kontrollera att Firestore är aktiverat i Firebase-projektet', { icon:'cloud-off', iconCls:'text-amber-500', timeout: 7000 });
+    setTimeout(()=>syncMsgShown=false, 60000);
+  }
+
+  /* ---------- Kortkommandon ---------- */
+  function onKey(e){
+    const typing = e.target.closest && e.target.closest('input, textarea, select, [contenteditable]');
+    if (e.key === 'Escape') {
+      if (!$('#reminderModal').classList.contains('hidden')) return closeReminder();
+      if (!$('#authModal').classList.contains('hidden')) return toggleAuth(false);
+      if (!$('#helpModal').classList.contains('hidden')) return toggleHelp(false);
+      if (!$('#settingsOverlay').classList.contains('hidden')) return closeSettings();
+      if (ui.editingId) return cancelEdit();
+      if (ui.composerOpen) { ui.composerOpen = false; render(); return; }
+      if (typing) { e.target.blur(); return; }
+    }
+    if (typing) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase()==='k') { e.preventDefault(); $('#searchInput').focus(); }
+      return;
+    }
+    switch (e.key) {
+      case 'n': case 'N': e.preventDefault(); openComposer(); break;
+      case '/': e.preventDefault(); $('#searchInput').focus(); break;
+      case 't': case 'T': toggleTheme(); break;
+      case 'v': case 'V': setView(settings.view==='split'?'all':'split'); break;
+      case 'a': case 'A': toggleDone(); break;
+      case '1': setFilter('all'); break;
+      case '2': setFilter('high'); break;
+      case '3': setFilter('low'); break;
+      case '?': toggleHelp(!$('#helpModal').classList.contains('hidden') ? false : true); break;
+    }
+  }
+  function toggleHelp(open){
+    if (open) { $('#helpBody').innerHTML = shortcutList(); $('#helpModal').classList.remove('hidden'); $('#helpModal').classList.add('flex'); }
+    else { $('#helpModal').classList.add('hidden'); $('#helpModal').classList.remove('flex'); }
+    refreshIcons();
+  }
+
+  /* ---------- Diverse UI ---------- */
+  function setFilter(f){ ui.filter = f; render(); }
+  function setView(v){ settings.view = v; commit({stamp:false}); }
+  function toggleSort(){ ui.sortDesc = !ui.sortDesc; render(); }
+  function toggleDone(){ ui.doneOpen = !ui.doneOpen; renderDone(); refreshIcons(); }
+  function clearQuery(){ ui.query = ''; $('#searchInput').value=''; render(); }
+  function openComposer(){
+    if (ui.composerOpen) { const o = $('#c-order'); if (o) o.focus(); return; }
+    ui.composerOpen = true; render();
+  }
+  function closeComposer(){ ui.composerOpen = false; render(); }
+  function composerPrio(p){ ui.composerPrio = p; paintComposer(p, ui.composerRemind || settings.lastRemind); }
+  function composerRemind(m){ ui.composerRemind = m; paintComposer(ui.composerPrio || settings.lastPrio, m); }
+  function setDelivery(d){
+    settings.delivery = d; commit({stamp:false});
+    if (d==='system') ensureNotifPerm().then(ok => { if(!ok) toast('Systemnotiser är inte tillåtna – tillåt dem i webbläsaren', { icon:'triangle-alert', iconCls:'text-amber-500', timeout: 5000 }); });
+  }
+  function setSound(k){ settings.sound = k; commit({stamp:false}); SOUNDS[k].play(); }
+  function previewSound(k){ SOUNDS[k].play(); }
+  function setVolume(v){
+    settings.volume = v/100;
+    const el = $('#volPct'); if (el) el.textContent = v + '%';
+    save(LS.settings, settings);
+    clearTimeout(setVolume._t); setVolume._t = setTimeout(()=>tone(880,0,.12,'sine',1), 120);
+  }
+  function setTheme(t){ settings.theme = t; applyTheme(); commit({stamp:false}); }
+  function setMascot(on){ settings.mascot = on; commit({stamp:false}); if(on) showMascot(); }
+
+  /* ---------- Init ---------- */
+  function init(){
+    applyTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(settings.theme==='system') applyTheme(); });
+    $('#searchInput').addEventListener('input', e => { ui.query = e.target.value.trim(); render(); });
+    $('#importFile').addEventListener('change', e => { if (e.target.files[0]) handleImportFile(e.target.files[0]); e.target.value=''; });
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) { checkReminders(); if(document.title.startsWith('(!)')) document.title='OrderPrio – Håll koll på jobbet'; } });
+    setInterval(checkReminders, 8000);
+    setTimeout(checkReminders, 1200);
+    render();
+  }
+
+  return {
+    init, toggleTheme, toggleHelp, openSettings, closeSettings, danger,
+    openComposer, closeComposer, composerPrio, composerRemind, submitComposer,
+    moveCard, deleteCard, undoDone, copyOrder, startEdit, cancelEdit, saveEdit, editPrio, editRemind,
+    setFilter, setView, toggleSort, toggleDone, clearQuery,
+    setDelivery, setSound, previewSound, setVolume, setTheme, setMascot, testReminder,
+    reminderDone, snoozeCard, closeReminder,
+    exportData, pickImport,
+    toggleAuth, signIn, signUp, signOut, onAuthChanged, applyRemote, syncError,
+    getSyncState: () => ({ cards, stats, updatedAt: localStamp }),
+    get localStamp(){ return localStamp; }
+  };
+})();
+
+App.init();
+</script>
+
+<!-- ================= FIREBASE (auth + Firestore-synk) ================= -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDQD-MMCPPtcwrylM-y52fjnKIhbf58d9Y",
+  authDomain: "remember2-465bc.firebaseapp.com",
+  projectId: "remember2-465bc",
+  storageBucket: "remember2-465bc.firebasestorage.app",
+  messagingSenderId: "497511091722",
+  appId: "1:497511091722:web:1a53ea92fec94a396199f3"
+};
+
+try {
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  let uid = null, unsub = null;
+
+  function push() {
+    if (!uid) return;
+    const state = window.App.getSyncState();
+    setDoc(doc(db, 'users', uid), {
+      cards: JSON.parse(JSON.stringify(state.cards)),
+      stats: state.stats,
+      updatedAt: state.updatedAt
+    }).catch(e => window.App.syncError(e));
+  }
+
+  onAuthStateChanged(auth, user => {
+    uid = user ? user.uid : null;
+    if (unsub) { unsub(); unsub = null; }
+    window.App.onAuthChanged(user ? { email: user.email, uid: user.uid } : null);
+    if (user) {
+      const ref = doc(db, 'users', user.uid);
+      unsub = onSnapshot(ref, snap => {
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.updatedAt && d.updatedAt > window.App.localStamp) window.App.applyRemote(d);
+        } else {
+          push(); // första inloggningen – ladda upp lokalt läge
+        }
+      }, err => window.App.syncError(err));
+    }
+  });
+
+  window.Sync = {
+    signIn: (e, p) => signInWithEmailAndPassword(auth, e, p),
+    signUp: (e, p) => createUserWithEmailAndPassword(auth, e, p),
+    signOut: () => signOut(auth),
+    push
+  };
+} catch (e) {
+  console.warn('Firebase kunde inte initieras:', e);
+}
+</script>
+</body>
+</html>
